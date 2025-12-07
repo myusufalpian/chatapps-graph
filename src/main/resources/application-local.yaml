@@ -1,14 +1,8 @@
-server:
-  port: 8084
-
 spring:
-  application:
-    name: chatapps-graph
   datasource:
     url: jdbc:postgresql://localhost:5432/chatapps
     username: postgres
     password: admin
-    driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
       ddl-auto: none
@@ -16,21 +10,26 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        highlight_sql: true
   data:
     redis:
       host: localhost
       port: 6379
-      timeout: ${redis-timeout}
-      jedis:
-        pool:
-          enabled: true
-          min-idle: 1
-          max-idle: 10
-          max-active: 3
-          max-wait: 1000
+      timeout: 5000ms
+  graphql:
+    graphiql:
+      enabled: true
+      path: /graphiql
+
+application:
+  minio:
+    endpoint: http://localhost:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+    bucket: chatapps-files
 
 logging:
   level:
     org.springframework.web: DEBUG
-    sql: debug
-    org.hibernate.orm.jdbc: debug
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc: DEBUG

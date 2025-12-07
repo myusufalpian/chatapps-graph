@@ -1,0 +1,54 @@
+package id.xyz.chatapps_graph.applications.service.adapters;
+
+import id.xyz.chatapps_graph.applications.service.FileStoragePort;
+import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ResponseConstants;
+import id.xyz.chatapps_graph.infrastructure.utility.ExceptionUtil;
+import io.minio.BucketExistsArgs;
+import io.minio.MakeBucketArgs;
+import io.minio.MinioClient;
+import io.minio.PutObjectArgs;
+import java.io.InputStream;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+
+@Service
+public class MinioService implements FileStoragePort {
+
+  private final MinioClient minioClient;
+  private final String bucketName;
+
+  @Autowired
+  public MinioService(MinioClient minioClient,
+      @Value("${application.minio.bucket}") String bucketName) {
+    this.minioClient = minioClient;
+    this.bucketName = bucketName;
+  }
+
+  @Override
+  public String uploadFile(String fileName, InputStream inputStream, String contentType, long size) {
+    try {
+      boolean found = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
+      if (!found) {
+        minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
+      }
+
+      minioClient.putObject(
+          PutObjectArgs.builder()
+              .bucket(bucketName)
+              .object(fileName)
+              .stream(inputStream, size, -1)
+              .contentType(contentType)
+              .build()
+      );
+
+      return fileName;
+
+    } catch (Exception e) {
+      throw ExceptionUtil.error(ResponseConstants.INTERNAL_SERVER_ERROR,
+          String.format(ResponseConstants.STORAGE_ERROR, e.getMessage()),
+          HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
+    }
+  }
+}
