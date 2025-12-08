@@ -25,6 +25,8 @@ public class GeneralConstants {
     public static final String GET_CHAT_DATA_USER = "Get chat data user %s to user %s";
     public static final String EDIT_CHAT_DATA_USER = "Edit chat data user %s to user %s with chatId: %s";
     public static final String DELETE_CHAT_DATA_USER = "Delete chat data user %s to user %s with chatId: %s";
+    public static final String REDIS_SET_WITH_TTL = "Redis SET: {} (TTL: {}s)";
+    public static final String ADDED_ITEMS_TO_SET = "Added {} items to set {}";
   }
 
 }
