@@ -25,7 +25,14 @@ public class ErrorConstants {
   @UtilityClass
   public static class LoggingConstants {
     public static final String ERROR_LOG = "Error: {}";
+    public static final String UNDEFINED_EXCEPTION_HANDLER = "Undefined Exception Handler: {}";
     public static final String ERROR_TRACE_LOG = "Error trace: {}";
     public static final String ERROR_VALIDATION_LOG = "Error validation: {}";
+    public static final String FAILED_SET_KEY_REDIS = "Failed to set key {} in Redis";
+    public static final String FAILED_GET_KEY_FROM_REDIS = "Failed to get key {} from Redis";
+    public static final String FAILED_DELETE_KEY_FROM_REDIS = "Failed to delete key {} from Redis";
+    public static final String FAILED_CHECK_KEY_FROM_REDIS = "Failed to check existence of key {}";
+    public static final String FAILED_ADD_TO_SET_KEY_REDIS = "Failed to add to set {}";
+    public static final String FAILED_GET_SET_MEMBER_FROM_REDIS = "Failed to get set members for {}";
   }
 }

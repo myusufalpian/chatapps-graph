@@ -3,6 +3,7 @@ package id.xyz.chatapps_graph.applications.service.adapters;
 import id.xyz.chatapps_graph.applications.service.CachePort;
 import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants;
 import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ResponseConstants;
+import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.LoggingConstants;
 import id.xyz.chatapps_graph.infrastructure.utility.ExceptionUtil;
 import java.time.Duration;
 import java.util.Collections;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class RedisService implements CachePort {
+
   private final RedisTemplate<String, Object> redisTemplate;
 
   @Autowired
@@ -29,10 +31,11 @@ public class RedisService implements CachePort {
   public void set(String key, Object value, Duration ttl) {
     try {
       redisTemplate.opsForValue().set(key, value, ttl);
-      log.debug("Redis SET: {} (TTL: {}s)", key, ttl.getSeconds());
+      log.debug(LoggingConstants.REDIS_SET_WITH_TTL, key, ttl.getSeconds());
     } catch (Exception e) {
-      log.error("Failed to set key {} in Redis", key, e);
-      throw ExceptionUtil.error(ErrorConstants.INTERNAL_SERVER_ERROR, String.format(ResponseConstants.ADD_DATA_TO_REDIS_FAILED, e.getMessage()),
+      log.error(ErrorConstants.LoggingConstants.FAILED_SET_KEY_REDIS, key, e);
+      throw ExceptionUtil.error(ErrorConstants.INTERNAL_SERVER_ERROR,
+          String.format(ResponseConstants.ADD_DATA_TO_REDIS_FAILED, e.getMessage()),
           HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
     }
   }
@@ -42,8 +45,9 @@ public class RedisService implements CachePort {
     try {
       redisTemplate.opsForValue().set(key, value);
     } catch (Exception e) {
-      log.error("Failed to set key {} in Redis", key, e);
-      throw ExceptionUtil.error(ErrorConstants.INTERNAL_SERVER_ERROR, String.format(ResponseConstants.ADD_DATA_TO_REDIS_FAILED, e.getMessage()),
+      log.error(ErrorConstants.LoggingConstants.FAILED_SET_KEY_REDIS, key, e);
+      throw ExceptionUtil.error(ErrorConstants.INTERNAL_SERVER_ERROR,
+          String.format(ResponseConstants.ADD_DATA_TO_REDIS_FAILED, e.getMessage()),
           HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
     }
   }
@@ -57,7 +61,7 @@ public class RedisService implements CachePort {
       }
       return Optional.of(clazz.cast(value));
     } catch (Exception e) {
-      log.error("Failed to get key {} from Redis", key, e);
+      log.error(ErrorConstants.LoggingConstants.FAILED_GET_KEY_FROM_REDIS, key, e);
       return Optional.empty();
     }
   }
@@ -67,7 +71,7 @@ public class RedisService implements CachePort {
     try {
       redisTemplate.delete(key);
     } catch (Exception e) {
-      log.error("Failed to delete key {} from Redis", key, e);
+      log.error(ErrorConstants.LoggingConstants.FAILED_DELETE_KEY_FROM_REDIS, key, e);
     }
   }
 
@@ -76,7 +80,7 @@ public class RedisService implements CachePort {
     try {
       return redisTemplate.hasKey(key);
     } catch (Exception e) {
-      log.error("Failed to check existence of key {}", key, e);
+      log.error(ErrorConstants.LoggingConstants.FAILED_CHECK_KEY_FROM_REDIS, key, e);
       return false;
     }
   }
@@ -86,10 +90,10 @@ public class RedisService implements CachePort {
     try {
       if (values != null && values.length > 0) {
         redisTemplate.opsForSet().add(key, values);
-        log.debug("Added {} items to set {}", values.length, key);
+        log.debug(LoggingConstants.ADDED_ITEMS_TO_SET, values.length, key);
       }
     } catch (Exception e) {
-      log.error("Failed to add to set {}", key, e);
+      log.error(ErrorConstants.LoggingConstants.FAILED_ADD_TO_SET_KEY_REDIS, key, e);
       throw ExceptionUtil.error(ErrorConstants.INTERNAL_SERVER_ERROR, ResponseConstants.ADD_SET_REDIS_FAILED,
           HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
     }
@@ -106,7 +110,7 @@ public class RedisService implements CachePort {
           .map(clazz::cast)
           .collect(Collectors.toSet());
     } catch (Exception e) {
-      log.error("Failed to get set members for {}", key, e);
+      log.error(ErrorConstants.LoggingConstants.FAILED_GET_SET_MEMBER_FROM_REDIS, key, e);
       return Collections.emptySet();
     }
   }

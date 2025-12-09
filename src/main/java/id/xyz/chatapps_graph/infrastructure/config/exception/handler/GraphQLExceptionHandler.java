@@ -14,6 +14,7 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.graphql.execution.DataFetcherExceptionResolverAdapter;
 import org.springframework.graphql.execution.ErrorType;
 import org.springframework.http.HttpStatus;
@@ -24,99 +25,100 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @Component
+@Slf4j
 public class GraphQLExceptionHandler extends DataFetcherExceptionResolverAdapter {
 
   @Override
   protected GraphQLError resolveToSingleError(Throwable ex, DataFetchingEnvironment env) {
 
-    if (ex instanceof GeneralException generalEx) {
+    switch (ex) {
+      case GeneralException generalEx -> {
 
-      String key = generalEx.getKey();
-      String detail = generalEx.getMessage();
-      Integer status = generalEx.getHttpCode();
-      List<ValidationData> validation = generalEx.getValidation();
+        String key = generalEx.getKey();
+        String detail = generalEx.getMessage();
+        Integer status = generalEx.getHttpCode();
+        List<ValidationData> validation = generalEx.getValidation();
 
-      ErrorData errorData = new BaseErrorData(key, detail, status, validation);
+        ErrorData errorData = new BaseErrorData(key, detail, status, validation);
 
-      return GraphqlErrorBuilder.newError()
-          .errorType(mapStatusToErrorType(status))
-          .message(detail)
-          .path(env.getExecutionStepInfo().getPath())
-          .location(env.getField().getSourceLocation())
-          .extensions(JsonUtil.convertObjectToMap(errorData))
-          .build();
-    }
-
-    if (ex instanceof ConstraintViolationException valEx) {
-      List<ValidationData> validationList = new ArrayList<>();
-
-      for (ConstraintViolation<?> violation : valEx.getConstraintViolations()) {
-        String fieldName = getLeafNode(violation.getPropertyPath().toString());
-        String message = violation.getMessage();
-        validationList.add(new ValidationData(fieldName, message));
+        return GraphqlErrorBuilder.newError()
+            .errorType(mapStatusToErrorType(status))
+            .message(detail)
+            .path(env.getExecutionStepInfo().getPath())
+            .location(env.getField().getSourceLocation())
+            .extensions(JsonUtil.convertObjectToMap(errorData))
+            .build();
       }
+      case ConstraintViolationException valEx -> {
+        List<ValidationData> validationList = new ArrayList<>();
 
-      BaseErrorData errorData = new BaseErrorData(
-          ErrorConstants.VALIDATION_ERROR,
-          ResponseConstants.FIELD_VALIDATION_ERROR,
-          HttpStatus.BAD_REQUEST.value(),
-          validationList
-      );
+        for (ConstraintViolation<?> violation : valEx.getConstraintViolations()) {
+          String fieldName = getLeafNode(violation.getPropertyPath().toString());
+          String message = violation.getMessage();
+          validationList.add(new ValidationData(fieldName, message));
+        }
 
-      return GraphqlErrorBuilder.newError()
-          .errorType(ErrorType.BAD_REQUEST)
-          .message("Input validation failed")
-          .path(env.getExecutionStepInfo().getPath())
-          .location(env.getField().getSourceLocation())
-          .extensions(JsonUtil.convertObjectToMap(errorData))
-          .build();
-    }
+        BaseErrorData errorData = new BaseErrorData(
+            ErrorConstants.VALIDATION_ERROR,
+            ResponseConstants.FIELD_VALIDATION_ERROR,
+            HttpStatus.BAD_REQUEST.value(),
+            validationList
+        );
 
-    if (ex instanceof MethodArgumentNotValidException validEx) {
-      List<ValidationData> validationList = new ArrayList<>();
-
-      for (FieldError fieldError : validEx.getBindingResult().getFieldErrors()) {
-        ValidationData validationData = ValidationData.builder().field(fieldError.getField())
-            .message(fieldError.getDefaultMessage()).build();
-        validationList.add(validationData);
+        return GraphqlErrorBuilder.newError()
+            .errorType(ErrorType.BAD_REQUEST)
+            .message("Input validation failed")
+            .path(env.getExecutionStepInfo().getPath())
+            .location(env.getField().getSourceLocation())
+            .extensions(JsonUtil.convertObjectToMap(errorData))
+            .build();
       }
+      case MethodArgumentNotValidException validEx -> {
+        List<ValidationData> validationList = new ArrayList<>();
 
-      BaseErrorData errorData = new BaseErrorData(
-          ErrorConstants.BAD_REQUEST,
-          ResponseConstants.FIELD_VALIDATION_ERROR,
-          HttpStatus.BAD_REQUEST.value(),
-          validationList
-      );
+        for (FieldError fieldError : validEx.getBindingResult().getFieldErrors()) {
+          ValidationData validationData = ValidationData.builder().field(fieldError.getField())
+              .message(fieldError.getDefaultMessage()).build();
+          validationList.add(validationData);
+        }
 
-      return GraphqlErrorBuilder.newError()
-          .errorType(ErrorType.BAD_REQUEST)
-          .message("Field Validation Error")
-          .path(env.getExecutionStepInfo().getPath())
-          .location(env.getField().getSourceLocation())
-          .extensions(JsonUtil.convertObjectToMap(errorData))
-          .build();
-    }
+        BaseErrorData errorData = new BaseErrorData(
+            ErrorConstants.BAD_REQUEST,
+            ResponseConstants.FIELD_VALIDATION_ERROR,
+            HttpStatus.BAD_REQUEST.value(),
+            validationList
+        );
 
-    if (ex instanceof MethodArgumentTypeMismatchException mismatchEx) {
-      String message = String.format(ResponseConstants.METHOD_ARGUMENT_TYPE_MISMATCH,
-          mismatchEx.getName(),
-          mismatchEx.getRequiredType() != null ? mismatchEx.getRequiredType().getSimpleName() : "unknown",
-          mismatchEx.getValue());
+        return GraphqlErrorBuilder.newError()
+            .errorType(ErrorType.BAD_REQUEST)
+            .message("Field Validation Error")
+            .path(env.getExecutionStepInfo().getPath())
+            .location(env.getField().getSourceLocation())
+            .extensions(JsonUtil.convertObjectToMap(errorData))
+            .build();
+      }
+      case MethodArgumentTypeMismatchException mismatchEx -> {
+        String message = String.format(ResponseConstants.METHOD_ARGUMENT_TYPE_MISMATCH,
+            mismatchEx.getName(),
+            mismatchEx.getRequiredType() != null ? mismatchEx.getRequiredType().getSimpleName() : "unknown",
+            mismatchEx.getValue());
 
-      BaseErrorData errorData = new BaseErrorData(
-          ErrorConstants.BAD_REQUEST,
-          message,
-          HttpStatus.BAD_REQUEST.value(),
-          null
-      );
+        BaseErrorData errorData = new BaseErrorData(
+            ErrorConstants.BAD_REQUEST,
+            message,
+            HttpStatus.BAD_REQUEST.value(),
+            null
+        );
 
-      return GraphqlErrorBuilder.newError()
-          .errorType(ErrorType.BAD_REQUEST)
-          .message(message)
-          .path(env.getExecutionStepInfo().getPath())
-          .location(env.getField().getSourceLocation())
-          .extensions(JsonUtil.convertObjectToMap(errorData))
-          .build();
+        return GraphqlErrorBuilder.newError()
+            .errorType(ErrorType.BAD_REQUEST)
+            .message(message)
+            .path(env.getExecutionStepInfo().getPath())
+            .location(env.getField().getSourceLocation())
+            .extensions(JsonUtil.convertObjectToMap(errorData))
+            .build();
+      }
+      default -> log.error(ErrorConstants.LoggingConstants.UNDEFINED_EXCEPTION_HANDLER, ex.getMessage());
     }
 
     return null;
