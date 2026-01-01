@@ -2,16 +2,23 @@ services:
   app:
     build: .
     image: chatapps-graph
+    container_name: chatapps-api
     ports:
-      - "8080:8080"
+      - "8084:8084"
     environment:
+      - SPRING_PROFILES_ACTIVE=local
       - SPRING_DATA_REDIS_HOST=redis
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/chatapps
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=admin
+      - APPLICATION_MINIO_ENDPOINT=http://minio:9000
+      - OAUTH2_ISSUER_URI=http://keycloak:8080/realms/chatapps-realm
+      - OAUTH2_JWK_SET_URI=http://keycloak:8080/realms/chatapps-realm/protocol/openid-connect/certs
     depends_on:
       - postgres
       - redis
+      - keycloak
+      - minio
   postgres:
     image: postgres:17-alpine
     container_name: chatapps-postgres
@@ -28,7 +35,7 @@ services:
       - "6379:6379"
   minio:
     image: minio/minio:latest
-    container_name: sb3-minio
+    container_name: chatapps-minio
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -38,6 +45,23 @@ services:
     volumes:
       - minio-data:/data
     command: server /data --console-address ":9001"
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: chatapps-keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_LOG_LEVEL: INFO
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY: "edge"
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./keycloak-data:/opt/keycloak/data/h2
 
 volumes:
   postgres-data:
