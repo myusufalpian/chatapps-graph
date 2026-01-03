@@ -27,6 +27,7 @@ spring:
     locations: classpath:db/migration
     default-schema: chatapps
     schemas: chatapps
+    baseline-on-migrate: true
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST}
