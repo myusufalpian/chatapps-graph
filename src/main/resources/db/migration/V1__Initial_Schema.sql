@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 ---
 -- Table: MST_About
 ---
-CREATE TABLE MST_About (
+CREATE TABLE mst_about (
                            about_id BIGSERIAL PRIMARY KEY,
                            about_uuid VARCHAR(64) DEFAULT gen_random_uuid()::text,
                            about_desc TEXT,
@@ -18,7 +18,7 @@ CREATE TABLE MST_About (
 ---
 -- Table: Users
 ---
-CREATE TABLE Users (
+CREATE TABLE users (
                        user_id BIGSERIAL PRIMARY KEY,
                        user_uuid VARCHAR(64) DEFAULT gen_random_uuid()::text,
                        user_phone VARCHAR(20),
@@ -36,7 +36,7 @@ CREATE TABLE Users (
 ---
 -- Table: About_User
 ---
-CREATE TABLE About_User (
+CREATE TABLE about_user (
                             about_user_id BIGSERIAL PRIMARY KEY,
                             about_user_uuid VARCHAR(64) DEFAULT gen_random_uuid()::text,
                             user_id BIGINT REFERENCES Users(userId),
@@ -50,7 +50,7 @@ CREATE TABLE About_User (
 ---
 -- Table: User_OTP
 ---
-CREATE TABLE User_OTP (
+CREATE TABLE user_otp (
                           otp_id BIGSERIAL PRIMARY KEY,
                           otp_uuid VARCHAR(64) DEFAULT gen_random_uuid()::text,
                           otp_code VARCHAR(10),
@@ -65,7 +65,7 @@ CREATE TABLE User_OTP (
 ---
 -- Table: Group
 ---
-CREATE TABLE "Group" ( -- "Group" is a reserved keyword in SQL
+CREATE TABLE "group" ( -- "Group" is a reserved keyword in SQL
                          group_id BIGSERIAL PRIMARY KEY,
                          group_uuid VARCHAR(64) DEFAULT gen_random_uuid()::text,
                          group_name VARCHAR(255),
@@ -97,7 +97,7 @@ CREATE TABLE chat_user (
 ---
 -- Table: Group_Member
 ---
-CREATE TABLE Group_Member (
+CREATE TABLE group_member (
                               group_member_id BIGSERIAL PRIMARY KEY,
                               group_member_uuid VARCHAR(64) DEFAULT gen_random_uuid()::text,
                               group_id BIGINT REFERENCES "Group"(groupId),
@@ -113,7 +113,7 @@ CREATE TABLE Group_Member (
 ---
 -- Table: Attachment
 ---
-CREATE TABLE Attachment (
+CREATE TABLE attachment (
                             attachment_id BIGSERIAL PRIMARY KEY,
                             attachment_uuid VARCHAR(64) DEFAULT gen_random_uuid()::text,
                             attachment_type VARCHAR(50),
@@ -128,7 +128,7 @@ CREATE TABLE Attachment (
 ---
 -- Table: chat_Detail
 ---
-CREATE TABLE chat_Detail (
+CREATE TABLE chat_detail (
                              user_chat_detail_id BIGSERIAL PRIMARY KEY,
                              user_chat_detail_uuid VARCHAR(64) DEFAULT gen_random_uuid()::text,
                              chat_id BIGINT,
