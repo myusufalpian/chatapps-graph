@@ -29,4 +29,11 @@ public class GeneralConstants {
     public static final String ADDED_ITEMS_TO_SET = "Added {} items to set {}";
   }
 
+  @UtilityClass
+  public static class StatusConstants {
+    public static Integer INACTIVE = 1;
+    public static Integer ACTIVE = 0;
+    public static Integer DELETED = 2;
+  }
+
 }

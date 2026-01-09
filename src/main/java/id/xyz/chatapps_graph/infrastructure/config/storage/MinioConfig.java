@@ -1,21 +1,25 @@
 package id.xyz.chatapps_graph.infrastructure.config.storage;
 
+import id.xyz.chatapps_graph.infrastructure.config.properties.MinioProperties;
 import io.minio.MinioClient;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class MinioConfig {
-  @Bean
-  public MinioClient minioClient(
-      @Value("${application.minio.endpoint}") String endpoint,
-      @Value("${application.minio.access-key}") String accessKey,
-      @Value("${application.minio.secret-key}") String secretKey) {
+  private final MinioProperties minioProperties;
 
+  @Autowired
+  public MinioConfig(MinioProperties minioProperties) {
+    this.minioProperties = minioProperties;
+  }
+
+  @Bean
+  public MinioClient minioClient() {
     return MinioClient.builder()
-        .endpoint(endpoint)
-        .credentials(accessKey, secretKey)
+        .endpoint(minioProperties.getEndpoint())
+        .credentials(minioProperties.getAccessKey(), minioProperties.getSecretKey())
         .build();
   }
 }

@@ -2,7 +2,7 @@ package id.xyz.chatapps_graph.applications.service.adapters;
 
 import id.xyz.chatapps_graph.applications.service.CachePort;
 import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants;
-import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ResponseConstants;
+import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ErrorKeyConstants;
 import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.LoggingConstants;
 import id.xyz.chatapps_graph.infrastructure.utility.ExceptionUtil;
 import java.time.Duration;
@@ -35,7 +35,7 @@ public class RedisService implements CachePort {
     } catch (Exception e) {
       log.error(ErrorConstants.LoggingConstants.FAILED_SET_KEY_REDIS, key, e);
       throw ExceptionUtil.error(ErrorConstants.INTERNAL_SERVER_ERROR,
-          String.format(ResponseConstants.ADD_DATA_TO_REDIS_FAILED, e.getMessage()),
+          String.format(ErrorKeyConstants.ADD_DATA_TO_REDIS_FAILED, e.getMessage()),
           HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
     }
   }
@@ -47,7 +47,7 @@ public class RedisService implements CachePort {
     } catch (Exception e) {
       log.error(ErrorConstants.LoggingConstants.FAILED_SET_KEY_REDIS, key, e);
       throw ExceptionUtil.error(ErrorConstants.INTERNAL_SERVER_ERROR,
-          String.format(ResponseConstants.ADD_DATA_TO_REDIS_FAILED, e.getMessage()),
+          String.format(ErrorKeyConstants.ADD_DATA_TO_REDIS_FAILED, e.getMessage()),
           HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
     }
   }
@@ -94,7 +94,7 @@ public class RedisService implements CachePort {
       }
     } catch (Exception e) {
       log.error(ErrorConstants.LoggingConstants.FAILED_ADD_TO_SET_KEY_REDIS, key, e);
-      throw ExceptionUtil.error(ErrorConstants.INTERNAL_SERVER_ERROR, ResponseConstants.ADD_SET_REDIS_FAILED,
+      throw ExceptionUtil.error(ErrorConstants.INTERNAL_SERVER_ERROR, ErrorKeyConstants.ADD_SET_REDIS_FAILED,
           HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
     }
   }

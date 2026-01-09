@@ -67,6 +67,10 @@ application:
     access-key: ${MINIO_ACCESS_KEY}
     secret-key: ${MINIO_SECRET_KEY}
     bucket: ${MINIO_BUCKET}
+  keycloak:
+    token-uri: http://localhost:8180/realms/chatapps-realm/protocol/openid-connect/token
+    client-id: ${KEYCLOAK-CLIENT}
+    client-secret: ${KEYCLOAK_SECRET}
 
 logging:
   level:

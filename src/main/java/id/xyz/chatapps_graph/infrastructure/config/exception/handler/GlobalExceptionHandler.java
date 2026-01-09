@@ -6,7 +6,7 @@ import id.xyz.chatapps_graph.framework.dto.ErrorResponse;
 import id.xyz.chatapps_graph.framework.dto.ValidationData;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants;
-import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ResponseConstants;
+import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ErrorKeyConstants;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -52,7 +52,7 @@ public class GlobalExceptionHandler {
       MethodArgumentTypeMismatchException exc) {
     ErrorData error = new BaseErrorData(
         ErrorConstants.BAD_REQUEST,
-        String.format(ResponseConstants.METHOD_ARGUMENT_TYPE_MISMATCH, exc.getName(), exc.getValue()),
+        String.format(ErrorKeyConstants.METHOD_ARGUMENT_TYPE_MISMATCH, exc.getName(), exc.getValue()),
         HttpStatus.BAD_REQUEST.value(),
         null
     );
@@ -71,7 +71,7 @@ public class GlobalExceptionHandler {
   private ResponseEntity<ErrorResponse> buildValidationErrorResponse(List<ValidationData> validationDataList) {
     ErrorData error = new BaseErrorData(
         ErrorConstants.BAD_REQUEST,
-        ResponseConstants.FIELD_VALIDATION_ERROR,
+        ErrorKeyConstants.FIELD_VALIDATION_ERROR,
         HttpStatus.BAD_REQUEST.value(),
         validationDataList
     );
