@@ -8,7 +8,7 @@ import id.xyz.chatapps_graph.framework.dto.ErrorData;
 import id.xyz.chatapps_graph.framework.dto.ValidationData;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants;
-import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ResponseConstants;
+import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ErrorKeyConstants;
 import id.xyz.chatapps_graph.infrastructure.utility.JsonUtil;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -60,7 +60,7 @@ public class GraphQLExceptionHandler extends DataFetcherExceptionResolverAdapter
 
         BaseErrorData errorData = new BaseErrorData(
             ErrorConstants.VALIDATION_ERROR,
-            ResponseConstants.FIELD_VALIDATION_ERROR,
+            ErrorKeyConstants.FIELD_VALIDATION_ERROR,
             HttpStatus.BAD_REQUEST.value(),
             validationList
         );
@@ -84,7 +84,7 @@ public class GraphQLExceptionHandler extends DataFetcherExceptionResolverAdapter
 
         BaseErrorData errorData = new BaseErrorData(
             ErrorConstants.BAD_REQUEST,
-            ResponseConstants.FIELD_VALIDATION_ERROR,
+            ErrorKeyConstants.FIELD_VALIDATION_ERROR,
             HttpStatus.BAD_REQUEST.value(),
             validationList
         );
@@ -98,7 +98,7 @@ public class GraphQLExceptionHandler extends DataFetcherExceptionResolverAdapter
             .build();
       }
       case MethodArgumentTypeMismatchException mismatchEx -> {
-        String message = String.format(ResponseConstants.METHOD_ARGUMENT_TYPE_MISMATCH,
+        String message = String.format(ErrorKeyConstants.METHOD_ARGUMENT_TYPE_MISMATCH,
             mismatchEx.getName(),
             mismatchEx.getRequiredType() != null ? mismatchEx.getRequiredType().getSimpleName() : "unknown",
             mismatchEx.getValue());

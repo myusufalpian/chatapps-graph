@@ -1,7 +1,7 @@
 package id.xyz.chatapps_graph.applications.service.adapters;
 
 import id.xyz.chatapps_graph.applications.service.FileStoragePort;
-import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ResponseConstants;
+import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ErrorKeyConstants;
 import id.xyz.chatapps_graph.infrastructure.utility.ExceptionUtil;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
@@ -46,8 +46,8 @@ public class MinioService implements FileStoragePort {
       return fileName;
 
     } catch (Exception e) {
-      throw ExceptionUtil.error(ResponseConstants.INTERNAL_SERVER_ERROR,
-          String.format(ResponseConstants.STORAGE_ERROR, e.getMessage()),
+      throw ExceptionUtil.error(ErrorKeyConstants.INTERNAL_SERVER_ERROR,
+          String.format(ErrorKeyConstants.STORAGE_ERROR, e.getMessage()),
           HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
     }
   }
