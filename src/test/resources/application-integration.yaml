@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: test-chatapps-integration
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    username: sa
+    password: sa
+    driver-class-name: org.h2.Driver
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: none
+  flyway:
+    enabled: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/test
+          jwk-set-uri: http://localhost:8080/realms/test/protocol/openid-connect/certs
+
+auth:
+  otp:
+    duration: 1
+    prefix: "otp:"
+    max-count: 3
+    max-attempts: 3
+    cooldown-seconds: 2
+    otp-length: 6
+    max-ip-count: 5
+    ip-window-seconds: 60
+
+application:
+  minio:
+    endpoint: http://localhost:9000
+    access-key: test
+    secret-key: test
+    bucket: test-bucket
+  keycloak:
+    token-uri: http://localhost:8180/realms/test/protocol/openid-connect/token
+    client-id: test-client
+    client-secret: test-secret
+    grant-type: "urn:ietf:params:oauth:grant-type:token-exchange"
+
+jwt:
+  auth:
+    converter:
+      resource-id: test-client
+      principal-attribute: preferred_username
+
+notification:
+  whatsapp:
+    fonnte:
+      api-url: http://localhost:9999/fonnte
+      api-token: test-token
+    wablas:
+      api-url: http://localhost:9999/wablas
+      api-token: test-token

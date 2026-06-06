@@ -20,3 +20,25 @@ spring:
       host: localhost
       port: 6379
       timeout: 1000ms
+
+auth:
+  otp:
+    duration: 3
+    prefix: "login:otp:"
+    max-count: 3
+    max-attempts: 5
+    cooldown-seconds: 60
+    otp-length: 6
+    max-ip-count: 10
+    ip-window-seconds: 3600
+
+auth:
+  otp:
+    duration: 3
+    prefix: "login:otp:"
+    max-count: 3
+    max-attempts: 5
+    cooldown-seconds: 60
+    otp-length: 6
+    max-ip-count: 10
+    ip-window-seconds: 3600
