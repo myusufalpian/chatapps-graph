@@ -6,6 +6,15 @@ spring:
     name: chatapps-graph
   security:
     oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - openid
+              - profile
+              - email
       resourceserver:
         jwt:
           issuer-uri: ${OAUTH2_ISSUER_URI:http://localhost:8080/realms/chatapps-realm}
@@ -54,6 +63,26 @@ spring:
   threads:
     virtual:
       enabled: true
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.timeout: 5000
+
+auth:
+  otp:
+    duration: 3
+    prefix: "login:otp:"
+    max-count: 3
+    max-attempts: 5
+    cooldown-seconds: 60
+    otp-length: 6
+    max-ip-count: 10
+    ip-window-seconds: 3600
 
 jwt:
   auth:
@@ -71,7 +100,34 @@ application:
     token-uri: http://localhost:8180/realms/chatapps-realm/protocol/openid-connect/token
     client-id: ${KEYCLOAK-CLIENT}
     client-secret: ${KEYCLOAK_SECRET}
+    grant-type: "urn:ietf:params:oauth:grant-type:token-exchange"
 
 logging:
   level:
     root: INFO
+
+app:
+  cache:
+    mode: ${APP_CACHE_MODE:REDIS}
+    global-prefix: "user"
+    default-ttl-seconds: 86400
+    in-memory-max-size: 1000
+
+notification:
+  whatsapp:
+    fonnte:
+      api-url: ${FONNTE_API_URL:https://api.fonnte.com/send}
+      api-token: ${FONNTE_API_TOKEN:}
+    wablas:
+      api-url: ${WABLAS_API_URL:https://api.wablas.com/api/send-message}
+      api-token: ${WABLAS_API_TOKEN:}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      whatsapp-primary:
+        failure-rate-threshold: 50
+        minimum-number-of-calls: 5
+        sliding-window-size: 10
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3

@@ -1,7 +1,6 @@
 package id.xyz.chatapps_graph.infrastructure.config.security;
 
 import id.xyz.chatapps_graph.framework.dto.KeycloakTokenResponse;
-import id.xyz.chatapps_graph.framework.dto.UserSignInRequestDTO;
 import id.xyz.chatapps_graph.infrastructure.config.properties.KeycloakProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -24,6 +23,24 @@ public class KeycloakAuthService {
     formData.add("grant_type", "password");
     formData.add("client_id", keycloakProperties.getClientId());
     formData.add("username", phoneNumber);
+
+    if (StringUtils.hasLength(keycloakProperties.getClientSecret())) {
+      formData.add("client_secret", keycloakProperties.getClientSecret());
+    }
+
+    return restClient.post()
+        .uri(keycloakProperties.getTokenUri())
+        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+        .body(formData)
+        .retrieve()
+        .body(KeycloakTokenResponse.class);
+  }
+
+  public KeycloakTokenResponse refreshToken(String refreshToken) {
+    MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
+    formData.add("grant_type", "refresh_token");
+    formData.add("client_id", keycloakProperties.getClientId());
+    formData.add("refresh_token", refreshToken);
 
     if (StringUtils.hasLength(keycloakProperties.getClientSecret())) {
       formData.add("client_secret", keycloakProperties.getClientSecret());
