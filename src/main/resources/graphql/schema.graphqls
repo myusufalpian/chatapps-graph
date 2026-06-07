@@ -1,0 +1,30 @@
+type Query {
+    myProfile: Profile!
+    userProfile(userUuid: String!): Profile!
+    contacts: [ContactEntry!]!
+}
+
+type Mutation {
+    updateMyFullName(fullName: String!): Profile!
+    updateMyStatus(aboutDesc: String!): Profile!
+    updateMyProfilePhoto(photoUrl: String!): Profile!
+    updateContactDisplayName(contactUserUuid: String!, displayName: String!): ContactEntry!
+    syncContacts(phoneNumbers: [String!]!): [ContactEntry!]!
+}
+
+type Profile {
+    userUuid: String!
+    phone: String
+    fullName: String
+    profilePhoto: String
+    aboutDesc: String
+}
+
+type ContactEntry {
+    contactUuid: String!
+    userUuid: String!
+    displayName: String
+    fullName: String
+    profilePhoto: String
+    aboutDesc: String
+}

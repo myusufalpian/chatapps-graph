@@ -34,6 +34,9 @@ public class User extends BaseEntity {
   @Column(name = "user_full_name", length = 255)
   private String userFullName;
 
+  @Column(name = "profile_photo", columnDefinition = "TEXT")
+  private String profilePhoto;
+
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "about_id")
   private MstAbout about;

@@ -7,6 +7,8 @@ public class GeneralConstants {
   public static class ResponseConstants {
     public static final String SUCCESS_GET_DATA = "Get data success";
     public static final String SUCCESS_CREATE_DATA = "Create data success";
+    public static final String SUCCESS_UPDATE_PROFILE = "Profile updated successfully";
+    public static final String SUCCESS_SYNC_CONTACTS = "Contacts synced successfully";
   }
 
   @UtilityClass

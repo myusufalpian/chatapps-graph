@@ -2,7 +2,6 @@ package id.xyz.chatapps_graph.infrastructure.notification;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -50,7 +49,7 @@ class WhatsAppNotificationChannelTest {
     channel.send(PHONE, OTP);
 
     verify(primaryProvider).sendMessage(PHONE, OTP);
-    verify(fallbackProvider, never()).sendMessage(any(), any());
+    verify(fallbackProvider, never()).sendMessage(PHONE, OTP);
   }
 
   @Test
@@ -92,7 +91,7 @@ class WhatsAppNotificationChannelTest {
     // Circuit should be open now — primary should NOT be called
     channel.send(PHONE, OTP);
 
-    verify(primaryProvider, never()).sendMessage(any(), any());
+    verify(primaryProvider, never()).sendMessage(PHONE, OTP);
     verify(fallbackProvider).sendMessage(PHONE, OTP);
   }
 

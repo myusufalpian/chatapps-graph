@@ -14,6 +14,7 @@ public class ErrorConstants {
   public static class ErrorKeyConstants {
     public static final String STORAGE_ERROR = "Storage error: %s";
     public static final String USER_NOT_FOUND = "User not found";
+    public static final String CONTACT_NOT_FOUND = "Contact not found";
     public static final String INTERNAL_SERVER_ERROR = "Internal Server Error";
     public static final String METHOD_ARGUMENT_TYPE_MISMATCH = "Type mismatch in '%s' type '%s' but value '%s'.";
     public static final String FIELD_VALIDATION_ERROR = "Field validation error";
