@@ -1,9 +1,8 @@
 package id.xyz.chatapps_graph.applications.usecase.adapters;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import id.xyz.chatapps_graph.applications.usecase.NotificationChannel;
@@ -64,7 +63,7 @@ class NotificationServiceImplTest {
     service.sendOtp(PHONE, null, OTP);
 
     verify(whatsAppChannel).send(PHONE, OTP);
-    verify(emailChannel, never()).send(any(), any());
+    verifyNoMoreInteractions(emailChannel);
   }
 
   @Test
