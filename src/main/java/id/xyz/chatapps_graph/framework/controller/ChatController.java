@@ -1,0 +1,219 @@
+package id.xyz.chatapps_graph.framework.controller;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
+import id.xyz.chatapps_graph.applications.usecase.ConversationService;
+import id.xyz.chatapps_graph.applications.usecase.MessageService;
+import id.xyz.chatapps_graph.domain.entity.Attachment;
+import id.xyz.chatapps_graph.domain.entity.Conversation;
+import id.xyz.chatapps_graph.domain.entity.Message;
+import id.xyz.chatapps_graph.domain.entity.User;
+import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
+import id.xyz.chatapps_graph.domain.repository.ConversationRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageRepository;
+import id.xyz.chatapps_graph.domain.repository.UserRepository;
+import id.xyz.chatapps_graph.framework.dto.BaseResponse;
+import id.xyz.chatapps_graph.framework.dto.CursorPageResponse;
+import id.xyz.chatapps_graph.framework.dto.MarkReadRequest;
+import id.xyz.chatapps_graph.framework.dto.MessageResponse;
+import id.xyz.chatapps_graph.framework.dto.ReplyToResponse;
+import id.xyz.chatapps_graph.framework.dto.SendMessageRequest;
+import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
+import id.xyz.chatapps_graph.infrastructure.mapper.AttachmentMapper;
+import id.xyz.chatapps_graph.infrastructure.mapper.MessageMapper;
+import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+@RestController
+@RequestMapping("/api/v1/chat")
+@RequiredArgsConstructor
+public class ChatController extends BaseApiController {
+
+  private final MessageService messageService;
+  private final AttachmentService attachmentService;
+  private final ConversationService conversationService;
+  private final ConversationRepository conversationRepository;
+  private final UserRepository userRepository;
+  private final AttachmentRepository attachmentRepository;
+  private final MessageRepository messageRepository;
+  private final SimpMessagingTemplate messagingTemplate;
+  private final ObjectMapper objectMapper;
+
+  @PostMapping("/messages")
+  public ResponseEntity<BaseResponse<MessageResponse>> sendMessage(
+      @RequestAttribute("X-User-Id") Long userId,
+      @RequestPart(value = "file", required = false) MultipartFile file,
+      @RequestPart("metadata") String metadataJson) {
+
+    SendMessageRequest request = parseMetadata(metadataJson);
+
+    User sender = userRepository.findById(userId)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User not found"));
+
+    Long attachmentId = null;
+    if (file != null && !file.isEmpty()) {
+      String attType = request.attachmentType() != null ? request.attachmentType() : "FILE";
+      Attachment attachment = attachmentService.validateAndUpload(file, attType, userId, sender.getUserUuid());
+      attachmentId = attachment.getAttachmentId();
+    }
+
+    Message message = messageService.sendMessage(userId, request.recipientUuid(),
+        request.conversationUuid(), request.messageType(), request.content(),
+        attachmentId, request.replyToMessageUuid());
+
+    Conversation conv = resolveConversation(request.conversationUuid(), message.getConversationId());
+    MessageResponse response = MessageMapper.toResponse(message, sender.getUserUuid(), conv.getConversationUuid(), null, null);
+
+    messagingTemplate.convertAndSend("/topic/chat/" + conv.getConversationUuid(), response);
+    return created(response, "Message sent");
+  }
+
+  @GetMapping("/conversations/{uuid}/messages")
+  public ResponseEntity<BaseResponse<CursorPageResponse<MessageResponse>>> listMessages(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid,
+      @RequestParam(value = "cursor", required = false) String cursor,
+      @RequestParam(value = "limit", defaultValue = "20") int limit) {
+
+    Conversation conversation = conversationService.findConversationByUuid(uuid);
+    if (!conversationService.isParticipant(conversation.getConversationId(), userId)) {
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Not a participant");
+    }
+
+    int fetchLimit = Math.min(limit, 50);
+    List<Message> messages = messageService.listMessages(conversation.getConversationId(), userId, cursor, fetchLimit + 1);
+
+    boolean hasMore = messages.size() > fetchLimit;
+    List<Message> resultMessages = hasMore ? messages.subList(0, fetchLimit) : messages;
+
+    String nextCursor = null;
+    if (hasMore) {
+      Message last = resultMessages.get(resultMessages.size() - 1);
+      nextCursor = CursorUtil.encode(last.getCreatedAt(), last.getMessageId());
+    }
+
+    List<MessageResponse> responses = buildMessageResponses(resultMessages, uuid);
+    return success(new CursorPageResponse<>(responses, nextCursor, hasMore), "Messages retrieved");
+  }
+
+  @DeleteMapping("/messages/{uuid}")
+  public ResponseEntity<BaseResponse<Void>> deleteMessage(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid,
+      @RequestParam("mode") String mode) {
+
+    messageService.deleteMessage(uuid, userId, mode);
+    return success("Message deleted");
+  }
+
+  @PutMapping("/messages/read")
+  public ResponseEntity<BaseResponse<Void>> markAsRead(
+      @RequestAttribute("X-User-Id") Long userId,
+      @RequestBody MarkReadRequest request) {
+
+    Conversation conversation = conversationService.findConversationByUuid(request.conversationUuid());
+    if (!conversationService.isParticipant(conversation.getConversationId(), userId)) {
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Not a participant");
+    }
+
+    User reader = userRepository.findById(userId).orElse(null);
+    messageService.markAsRead(request.conversationUuid(), userId);
+
+    if (reader != null && !Boolean.TRUE.equals(reader.getHideReadReceipt())) {
+      messagingTemplate.convertAndSend("/topic/chat/" + request.conversationUuid() + "/receipts",
+          Map.of("userId", userId, "status", "READ", "conversationUuid", request.conversationUuid()));
+    }
+
+    return success("Marked as read");
+  }
+
+  private SendMessageRequest parseMetadata(String metadataJson) {
+    try {
+      return objectMapper.readValue(metadataJson, SendMessageRequest.class);
+    } catch (Exception e) {
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_METADATA", "Invalid metadata JSON");
+    }
+  }
+
+  private Conversation resolveConversation(String conversationUuid, Long conversationId) {
+    if (conversationUuid != null) {
+      return conversationService.findConversationByUuid(conversationUuid);
+    }
+    return conversationRepository.findById(conversationId)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "CONVERSATION_NOT_FOUND", "Conversation not found"));
+  }
+
+  private List<MessageResponse> buildMessageResponses(List<Message> messages, String conversationUuid) {
+    if (messages.isEmpty()) {
+      return List.of();
+    }
+
+    Map<Long, User> userMap = userRepository.findAllById(
+        messages.stream().map(Message::getSenderId).distinct().toList()
+    ).stream().collect(Collectors.toMap(User::getUserId, Function.identity()));
+
+    Map<Long, Attachment> attachmentMap = loadAttachments(messages);
+    Map<Long, Message> replyMap = loadReplies(messages);
+
+    return messages.stream()
+        .map(m -> mapMessage(m, conversationUuid, userMap, attachmentMap, replyMap))
+        .toList();
+  }
+
+  private MessageResponse mapMessage(Message m, String conversationUuid,
+      Map<Long, User> userMap, Map<Long, Attachment> attachmentMap, Map<Long, Message> replyMap) {
+
+    User sender = userMap.get(m.getSenderId());
+    String senderUuid = sender != null ? sender.getUserUuid() : null;
+
+    var attResp = m.getAttachmentId() != null
+        ? AttachmentMapper.toResponse(attachmentMap.get(m.getAttachmentId()))
+        : null;
+
+    var replyResp = m.getReplyToMessageId() != null
+        ? buildReplyResponse(replyMap.get(m.getReplyToMessageId()), userMap)
+        : null;
+
+    return MessageMapper.toResponse(m, senderUuid, conversationUuid, attResp, replyResp);
+  }
+
+  private ReplyToResponse buildReplyResponse(Message replyMsg, Map<Long, User> userMap) {
+    if (replyMsg == null) return null;
+    User replySender = userMap.get(replyMsg.getSenderId());
+    return MessageMapper.toReplyResponse(replyMsg, replySender != null ? replySender.getUserUuid() : null);
+  }
+
+  private Map<Long, Attachment> loadAttachments(List<Message> messages) {
+    List<Long> ids = messages.stream().map(Message::getAttachmentId).filter(Objects::nonNull).distinct().toList();
+    if (ids.isEmpty()) return Map.of();
+    return attachmentRepository.findAllById(ids).stream()
+        .collect(Collectors.toMap(Attachment::getAttachmentId, Function.identity()));
+  }
+
+  private Map<Long, Message> loadReplies(List<Message> messages) {
+    List<Long> ids = messages.stream().map(Message::getReplyToMessageId).filter(Objects::nonNull).distinct().toList();
+    if (ids.isEmpty()) return Map.of();
+    return messageRepository.findAllById(ids).stream()
+        .collect(Collectors.toMap(Message::getMessageId, Function.identity()));
+  }
+}

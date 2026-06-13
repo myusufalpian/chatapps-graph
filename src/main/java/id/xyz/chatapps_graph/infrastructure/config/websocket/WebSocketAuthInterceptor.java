@@ -1,5 +1,6 @@
 package id.xyz.chatapps_graph.infrastructure.config.websocket;
 
+import id.xyz.chatapps_graph.applications.usecase.adapters.UserIdentityResolverRegistry;
 import id.xyz.chatapps_graph.infrastructure.config.security.KeycloakJwtConverter;
 import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
   private final JwtDecoder jwtDecoder;
   private final KeycloakJwtConverter keycloakJwtConverter;
+  private final UserIdentityResolverRegistry resolverRegistry;
 
   @Override
   public Message<?> preSend(@Nullable Message<?> message, @Nullable MessageChannel channel) {
@@ -40,10 +42,24 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
       try {
         Jwt jwt = jwtDecoder.decode(token);
         JwtAuthenticationToken authentication = (JwtAuthenticationToken) keycloakJwtConverter.convert(jwt);
+
+        Long userId = resolverRegistry.resolve(jwt);
+        if (userId == null) {
+          throw new AuthenticationCredentialsNotFoundException("Unable to resolve user identity");
+        }
+
         accessor.setUser(authentication);
+        accessor.getSessionAttributes().put("X-User-Id", userId);
       } catch (JwtException e) {
         log.warn("WebSocket CONNECT rejected: invalid JWT - {}", e.getMessage());
         throw new AuthenticationCredentialsNotFoundException("Invalid or expired token");
+      }
+    }
+
+    if (accessor != null && StompCommand.SEND.equals(accessor.getCommand())) {
+      Object userId = accessor.getSessionAttributes().get("X-User-Id");
+      if (userId instanceof Long uid && resolverRegistry.isBanned(uid)) {
+        throw new AuthenticationCredentialsNotFoundException("User is banned");
       }
     }
 

@@ -36,6 +36,7 @@ public class GeneralConstants {
     public static Integer INACTIVE = 1;
     public static Integer ACTIVE = 0;
     public static Integer DELETED = 2;
+    public static Integer PENDING_PROFILE = 3;
   }
 
 }

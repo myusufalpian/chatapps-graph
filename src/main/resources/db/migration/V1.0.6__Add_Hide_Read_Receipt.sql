@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN hide_read_receipt BOOLEAN NOT NULL DEFAULT false;

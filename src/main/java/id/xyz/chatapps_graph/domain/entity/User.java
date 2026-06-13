@@ -9,13 +9,19 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 
 @Entity
 @Table(name = "Users")
 @Getter
 @Setter
+@Builder
+@RequiredArgsConstructor
+@AllArgsConstructor
 public class User extends BaseEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,4 +52,7 @@ public class User extends BaseEntity {
 
   @Column(name = "user_status", columnDefinition = "integer default 0")
   private Integer userStatus;
+
+  @Column(name = "hide_read_receipt", nullable = false)
+  private Boolean hideReadReceipt;
 }

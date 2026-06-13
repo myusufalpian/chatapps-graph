@@ -2,6 +2,7 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 
 import id.xyz.chatapps_graph.applications.usecase.AuthService;
 import id.xyz.chatapps_graph.applications.usecase.NotificationService;
+import id.xyz.chatapps_graph.applications.usecase.OtpAuditService;
 import id.xyz.chatapps_graph.applications.usecase.OtpService;
 import id.xyz.chatapps_graph.applications.usecase.RateLimitService;
 import id.xyz.chatapps_graph.domain.entity.User;
@@ -9,18 +10,19 @@ import id.xyz.chatapps_graph.domain.enums.OtpPurpose;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
 import id.xyz.chatapps_graph.framework.dto.KeycloakTokenResponse;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
+import id.xyz.chatapps_graph.infrastructure.config.properties.AuthenticationOtpProperties;
 import id.xyz.chatapps_graph.infrastructure.config.security.KeycloakAuthService;
 import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.StatusConstants;
 import id.xyz.chatapps_graph.infrastructure.utility.MaskingUtil;
+import java.time.OffsetDateTime;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClientException;
-
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.regex.Pattern;
 
 @Service
 @Slf4j
@@ -31,9 +33,11 @@ public class AuthServiceImpl implements AuthService {
 
   private final UserRepository userRepository;
   private final OtpService otpService;
+  private final OtpAuditService otpAuditService;
   private final RateLimitService rateLimitService;
   private final NotificationService notificationService;
   private final KeycloakAuthService keycloakAuthService;
+  private final AuthenticationOtpProperties otpProperties;
 
   @Override
   public void requestOtp(String phone, OtpPurpose purpose, String clientIp) {
@@ -63,6 +67,8 @@ public class AuthServiceImpl implements AuthService {
 
     User user = userOpt.get();
     String otp = otpService.generateAndSaveOtp(phone, purpose);
+    OffsetDateTime expAt = OffsetDateTime.now().plusMinutes(otpProperties.getDuration());
+    otpAuditService.recordOtpGenerated(user.getUserId(), otp, purpose, expAt);
     rateLimitService.setCooldown(phone, purpose.name().toLowerCase());
     notificationService.sendOtp(phone, user.getUserMail(), otp);
     log.info("OTP sent to phone [{}] for purpose [{}]", MaskingUtil.maskPhone(phone), purpose);
@@ -70,18 +76,29 @@ public class AuthServiceImpl implements AuthService {
 
   @Override
   public void requestMfaOtp(String phone, String clientIp) {
-    // MFA endpoint: caller must already be authenticated (partial-auth token validated by Spring Security)
     requestOtp(phone, OtpPurpose.MFA, clientIp);
   }
 
   @Override
   public KeycloakTokenResponse verifyOtpAndLogin(String phone, String code) {
     validatePhone(phone);
+
+    var userOpt = userRepository.findUserByUserPhoneAndUserStatus(phone, StatusConstants.ACTIVE);
+    if (userOpt.isEmpty()) {
+      throw new GeneralException(HttpStatus.UNAUTHORIZED.value(), "INVALID_OTP",
+          "The OTP code is incorrect or expired");
+    }
+
+    User user = userOpt.get();
     boolean isValid = otpService.validateOtp(phone, code, OtpPurpose.SIGN_IN);
+
     if (!isValid) {
       throw new GeneralException(HttpStatus.UNAUTHORIZED.value(), "INVALID_OTP",
           "The OTP code is incorrect or expired");
     }
+
+    otpAuditService.markVerified(user.getUserId(), OtpPurpose.SIGN_IN);
+
     try {
       return keycloakAuthService.exchangePasswordForToken(phone);
     } catch (RestClientException exc) {
@@ -109,9 +126,6 @@ public class AuthServiceImpl implements AuthService {
     }
   }
 
-  /**
-   * Simulate processing delay to prevent timing-based user enumeration.
-   */
   private void simulateDelay() {
     try {
       Thread.sleep(ThreadLocalRandom.current().nextLong(50, 200));
