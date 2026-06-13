@@ -7,12 +7,15 @@ import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import java.io.InputStream;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class MinioService implements FileStoragePort {
 
@@ -49,6 +52,20 @@ public class MinioService implements FileStoragePort {
       throw ExceptionUtil.error(ErrorKeyConstants.INTERNAL_SERVER_ERROR,
           String.format(ErrorKeyConstants.STORAGE_ERROR, e.getMessage()),
           HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
+    }
+  }
+
+  @Override
+  public void deleteFile(String fileName) {
+    try {
+      minioClient.removeObject(
+          RemoveObjectArgs.builder()
+              .bucket(bucketName)
+              .object(fileName)
+              .build()
+      );
+    } catch (Exception e) {
+      log.error("Failed to delete file from Minio: {}", fileName, e);
     }
   }
 }

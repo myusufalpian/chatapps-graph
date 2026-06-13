@@ -4,4 +4,5 @@ import java.io.InputStream;
 
 public interface FileStoragePort {
   String uploadFile(String fileName, InputStream inputStream, String contentType, long size);
+  void deleteFile(String fileName);
 }

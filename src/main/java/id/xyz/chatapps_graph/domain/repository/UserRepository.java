@@ -22,6 +22,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
   List<User> findByUserPhoneInAndUserStatus(List<String> userPhones, Integer userStatus);
 
-  @Query(nativeQuery = true, value = UserSQL.getUserDetailByUserIdAndUserStatus)
+  Optional<User> findByUserMailAndUserStatus(String userMail, Integer userStatus);
+
+  @Query(nativeQuery = true, value = UserSQL.GET_USER_DETAIL_BY_USER_ID_AND_USER_STATUS)
   Optional<UserDetailDTO> getUserDetailByUserId(Long userId, Integer userStatus);
 }

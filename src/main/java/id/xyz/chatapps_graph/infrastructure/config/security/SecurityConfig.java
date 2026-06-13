@@ -1,5 +1,6 @@
 package id.xyz.chatapps_graph.infrastructure.config.security;
 
+import id.xyz.chatapps_graph.infrastructure.config.properties.CorsProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -7,6 +8,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -20,9 +22,13 @@ import java.util.List;
 public class SecurityConfig {
 
   private final KeycloakJwtConverter keycloakJwtConverter;
+  private final UserIdentityFilter userIdentityFilter;
+  private final CorsProperties corsProperties;
 
-  public SecurityConfig(KeycloakJwtConverter keycloakJwtConverter) {
+  public SecurityConfig(KeycloakJwtConverter keycloakJwtConverter, UserIdentityFilter userIdentityFilter, CorsProperties corsProperties) {
     this.keycloakJwtConverter = keycloakJwtConverter;
+    this.userIdentityFilter = userIdentityFilter;
+    this.corsProperties = corsProperties;
   }
 
   @Bean
@@ -41,7 +47,8 @@ public class SecurityConfig {
         )
         .sessionManagement(session -> session
             .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-        );
+        )
+        .addFilterAfter(userIdentityFilter, BearerTokenAuthenticationFilter.class);
 
     return http.build();
   }
@@ -49,7 +56,7 @@ public class SecurityConfig {
   @Bean
   public CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration configuration = new CorsConfiguration();
-    configuration.setAllowedOriginPatterns(List.of("*"));
+    configuration.setAllowedOrigins(corsProperties.getAllowedOrigins());
     configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
     configuration.setAllowedHeaders(List.of("*"));
     configuration.setAllowCredentials(true);
