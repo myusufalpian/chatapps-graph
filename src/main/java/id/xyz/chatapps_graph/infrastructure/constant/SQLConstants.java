@@ -45,4 +45,91 @@ public class SQLConstants {
         "AND cp.user_id = :userIdB " +
         "AND cp.conversation_id IN (SELECT c.conversation_id FROM conversation c WHERE c.conversation_type = 'PRIVATE')";
   }
+
+  @UtilityClass
+  public static class ConversationListSQL {
+
+    private static final String BASE_SELECT =
+        "SELECT cp.conversation_id AS conversationId, cp.last_message_at AS lastMessageAt, " +
+        "cp.last_message_preview AS lastMessagePreview, cp.last_message_type AS lastMessageType, " +
+        "cp.unread_count AS unreadCount, cp.is_pinned AS isPinned, cp.pinned_at AS pinnedAt, " +
+        "cp.is_muted AS isMuted, c.conversation_uuid AS conversationUuid, " +
+        "c.conversation_type AS conversationType " +
+        "FROM conversation_participant cp " +
+        "JOIN conversation c ON c.conversation_id = cp.conversation_id ";
+
+    private static final String ORDER_FIRST_PAGE =
+        " ORDER BY cp.is_pinned DESC, cp.pinned_at ASC, cp.last_message_at DESC NULLS LAST, cp.conversation_id DESC LIMIT :limit";
+
+    private static final String ORDER_CURSOR_PAGE =
+        " ORDER BY cp.last_message_at DESC NULLS LAST, cp.conversation_id DESC LIMIT :limit";
+
+    public static final String LIST_FIRST_PAGE =
+        BASE_SELECT +
+        "WHERE cp.user_id = :userId AND cp.is_archived = :isArchived" +
+        ORDER_FIRST_PAGE;
+
+    public static final String LIST_FIRST_PAGE_UNREAD =
+        BASE_SELECT +
+        "WHERE cp.user_id = :userId AND cp.is_archived = :isArchived AND cp.unread_count > 0" +
+        ORDER_FIRST_PAGE;
+
+    public static final String LIST_FIRST_PAGE_BY_TYPE =
+        BASE_SELECT +
+        "WHERE cp.user_id = :userId AND cp.is_archived = :isArchived AND c.conversation_type = :convType" +
+        ORDER_FIRST_PAGE;
+
+    public static final String LIST_WITH_CURSOR =
+        BASE_SELECT +
+        "WHERE cp.user_id = :userId AND cp.is_archived = :isArchived AND cp.is_pinned = false " +
+        "AND (cp.last_message_at < :cursorTs OR (cp.last_message_at = :cursorTs AND cp.conversation_id < :cursorId))" +
+        ORDER_CURSOR_PAGE;
+
+    public static final String LIST_WITH_CURSOR_UNREAD =
+        BASE_SELECT +
+        "WHERE cp.user_id = :userId AND cp.is_archived = :isArchived AND cp.is_pinned = false " +
+        "AND cp.unread_count > 0 " +
+        "AND (cp.last_message_at < :cursorTs OR (cp.last_message_at = :cursorTs AND cp.conversation_id < :cursorId))" +
+        ORDER_CURSOR_PAGE;
+
+    public static final String LIST_WITH_CURSOR_BY_TYPE =
+        BASE_SELECT +
+        "WHERE cp.user_id = :userId AND cp.is_archived = :isArchived AND cp.is_pinned = false " +
+        "AND c.conversation_type = :convType " +
+        "AND (cp.last_message_at < :cursorTs OR (cp.last_message_at = :cursorTs AND cp.conversation_id < :cursorId))" +
+        ORDER_CURSOR_PAGE;
+
+    public static final String COUNT_PINNED =
+        "SELECT COUNT(*) FROM conversation_participant WHERE user_id = :userId AND is_pinned = true";
+
+    public static final String INCREMENT_UNREAD =
+        "UPDATE conversation_participant SET unread_count = unread_count + 1, " +
+        "last_message_at = :lastMessageAt, last_message_preview = :preview, last_message_type = :messageType " +
+        "WHERE conversation_id = :conversationId AND user_id != :senderId";
+
+    public static final String AUTO_UNARCHIVE =
+        "UPDATE conversation_participant SET is_archived = false " +
+        "WHERE conversation_id = :conversationId AND user_id != :senderId AND is_archived = true";
+
+    public static final String UPDATE_SENDER_LAST_MESSAGE =
+        "UPDATE conversation_participant SET last_message_at = :lastMessageAt, " +
+        "last_message_preview = :preview, last_message_type = :messageType " +
+        "WHERE conversation_id = :conversationId AND user_id = :senderId";
+
+    public static final String RESET_UNREAD =
+        "UPDATE conversation_participant SET unread_count = 0 " +
+        "WHERE conversation_id = :conversationId AND user_id = :userId";
+
+    public static final String UPDATE_LAST_MESSAGE_PREVIEW_FOR_ALL =
+        "UPDATE conversation_participant SET last_message_preview = :preview " +
+        "WHERE conversation_id = :conversationId";
+
+    public static final String COUNT_PINNED_FOR_UPDATE =
+        "SELECT COUNT(*) FROM conversation_participant WHERE user_id = :userId AND is_pinned = true FOR UPDATE";
+
+    public static final String FIND_LATEST_ACTIVE_MESSAGE_ID =
+        "SELECT m.message_id FROM message m " +
+        "WHERE m.conversation_id = :conversationId AND m.message_status = 0 " +
+        "ORDER BY m.created_at DESC, m.message_id DESC LIMIT 1";
+  }
 }

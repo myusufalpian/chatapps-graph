@@ -35,4 +35,32 @@ public class ConversationParticipant {
 
   @Column(name = "joined_at", updatable = false)
   private OffsetDateTime joinedAt;
+
+  @Column(name = "last_message_at")
+  private OffsetDateTime lastMessageAt;
+
+  @Column(name = "last_message_preview", columnDefinition = "TEXT")
+  private String lastMessagePreview;
+
+  @Column(name = "last_message_type", length = 20)
+  private String lastMessageType;
+
+  @Column(name = "unread_count", nullable = false)
+  @Builder.Default
+  private Integer unreadCount = 0;
+
+  @Column(name = "is_pinned", nullable = false)
+  @Builder.Default
+  private Boolean isPinned = false;
+
+  @Column(name = "pinned_at")
+  private OffsetDateTime pinnedAt;
+
+  @Column(name = "is_archived", nullable = false)
+  @Builder.Default
+  private Boolean isArchived = false;
+
+  @Column(name = "is_muted", nullable = false)
+  @Builder.Default
+  private Boolean isMuted = false;
 }

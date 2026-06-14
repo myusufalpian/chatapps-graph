@@ -148,9 +148,9 @@ public class GraphQLExceptionHandler extends DataFetcherExceptionResolverAdapter
     };
   }
 
-  private Map<String, Object> toSafeExtensions(ErrorData errorData) {
+  private Map toSafeExtensions(ErrorData errorData) {
     try {
-      return JsonUtil.convertObjectToMap(errorData);
+      return JsonUtil.convert(errorData, Map.class);
     } catch (Exception e) {
       log.warn("Failed to serialize error extensions: {}", e.getMessage());
       return Map.of("status", errorData.status(), "key", String.valueOf(errorData.key()));

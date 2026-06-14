@@ -21,6 +21,7 @@ import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.StatusCons
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil;
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil.CursorPosition;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -62,6 +63,15 @@ public class MessageServiceImpl implements MessageService {
           .build());
 
       createReceipts(message.getMessageId(), conversation.getConversationId(), senderId);
+
+      // Update denormalized fields
+      String preview = truncatePreview(content, messageType);
+      participantRepository.incrementUnreadAndUpdateLastMessage(
+          conversation.getConversationId(), senderId, message.getCreatedAt(), preview, messageType);
+      participantRepository.updateSenderLastMessage(
+          conversation.getConversationId(), senderId, message.getCreatedAt(), preview, messageType);
+      participantRepository.autoUnarchive(conversation.getConversationId(), senderId);
+
       return message;
     } catch (Exception e) {
       if (filePath != null) {
@@ -92,7 +102,19 @@ public class MessageServiceImpl implements MessageService {
         throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Only sender can delete for all");
       }
       message.setMessageStatus(MessageStatus.DELETED.getValue());
-      messageRepository.save(message);
+      messageRepository.saveAndFlush(message);
+      // Update preview only if this was the last message in conversation
+      Optional<Long> latestId = messageRepository.findLatestActiveMessageId(message.getConversationId());
+      if (latestId.isEmpty() || latestId.get() < message.getMessageId()) {
+        if (latestId.isPresent()) {
+          messageRepository.findById(latestId.get()).ifPresent(latest -> {
+            String preview = truncatePreview(latest.getContent(), latest.getMessageType());
+            participantRepository.updateLastMessagePreviewForAll(message.getConversationId(), preview);
+          });
+        } else {
+          participantRepository.updateLastMessagePreviewForAll(message.getConversationId(), "Pesan dihapus");
+        }
+      }
     } else {
       MessageReceipt receipt = receiptRepository.findByMessageIdAndUserId(message.getMessageId(), userId)
           .orElseGet(() -> MessageReceipt.builder()
@@ -111,6 +133,7 @@ public class MessageServiceImpl implements MessageService {
   public void markAsRead(String conversationUuid, Long userId) {
     Conversation conversation = conversationService.findConversationByUuid(conversationUuid);
     receiptRepository.markAsReadByConversation(conversation.getConversationId(), userId, ReceiptStatus.READ.getValue());
+    participantRepository.resetUnreadCount(conversation.getConversationId(), userId);
   }
 
   private Conversation resolveConversation(Long senderId, String recipientUuid, String conversationUuid) {
@@ -155,5 +178,12 @@ public class MessageServiceImpl implements MessageService {
             .status(ReceiptStatus.SENT.getValue())
             .isDeletedForMe(false)
             .build()));
+  }
+
+  private String truncatePreview(String content, String messageType) {
+    if (content == null || content.isBlank()) {
+      return messageType;
+    }
+    return content.length() <= 100 ? content : content.substring(0, 100);
   }
 }
