@@ -50,6 +50,9 @@ public class Message {
   @Column(name = "reply_to_message_id")
   private Long replyToMessageId;
 
+  @Column(name = "forwarded_from_id")
+  private Long forwardedFromId;
+
   @Column(name = "message_status", nullable = false)
   private Integer messageStatus;
 

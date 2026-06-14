@@ -5,21 +5,28 @@ import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationListService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
 import id.xyz.chatapps_graph.applications.usecase.MessageService;
+import id.xyz.chatapps_graph.applications.usecase.RateLimitService;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
 import id.xyz.chatapps_graph.domain.entity.Conversation;
 import id.xyz.chatapps_graph.domain.entity.Message;
+import id.xyz.chatapps_graph.domain.entity.MessageReaction;
 import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
 import id.xyz.chatapps_graph.domain.repository.ConversationRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageReactionRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
 import id.xyz.chatapps_graph.framework.dto.BaseResponse;
 import id.xyz.chatapps_graph.framework.dto.ConversationListResponse;
 import id.xyz.chatapps_graph.framework.dto.CreateMultiChatRequest;
 import id.xyz.chatapps_graph.framework.dto.CursorPageResponse;
+import id.xyz.chatapps_graph.framework.dto.ForwardMessageRequest;
+import id.xyz.chatapps_graph.framework.dto.ForwardedInfo;
 import id.xyz.chatapps_graph.framework.dto.MarkReadRequest;
 import id.xyz.chatapps_graph.framework.dto.MessageResponse;
 import id.xyz.chatapps_graph.framework.dto.ParticipantSummary;
+import id.xyz.chatapps_graph.framework.dto.ReactionRequest;
+import id.xyz.chatapps_graph.framework.dto.ReactionSummary;
 import id.xyz.chatapps_graph.framework.dto.ReplyToResponse;
 import id.xyz.chatapps_graph.framework.dto.SendMessageRequest;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
@@ -60,7 +67,9 @@ public class ChatController extends BaseApiController {
   private final AttachmentService attachmentService;
   private final ConversationService conversationService;
   private final ConversationListService conversationListService;
+  private final RateLimitService rateLimitService;
   private final ConversationRepository conversationRepository;
+  private final MessageReactionRepository reactionRepository;
   private final UserRepository userRepository;
   private final AttachmentRepository attachmentRepository;
   private final MessageRepository messageRepository;
@@ -90,7 +99,7 @@ public class ChatController extends BaseApiController {
         attachmentId, request.replyToMessageUuid());
 
     Conversation conv = resolveConversation(request.conversationUuid(), message.getConversationId());
-    MessageResponse response = MessageMapper.toResponse(message, sender.getUserUuid(), conv.getConversationUuid(), null, null);
+    MessageResponse response = MessageMapper.toResponse(message, sender.getUserUuid(), conv.getConversationUuid(), null, null, null, null);
 
     messagingTemplate.convertAndSend("/topic/chat/" + conv.getConversationUuid(), response);
     return created(response, "Message sent");
@@ -120,7 +129,7 @@ public class ChatController extends BaseApiController {
       nextCursor = CursorUtil.encode(last.getCreatedAt(), last.getMessageId());
     }
 
-    List<MessageResponse> responses = buildMessageResponses(resultMessages, uuid);
+    List<MessageResponse> responses = buildMessageResponses(resultMessages, uuid, userId);
     return success(new CursorPageResponse<>(responses, nextCursor, hasMore), "Messages retrieved");
   }
 
@@ -250,6 +259,80 @@ public class ChatController extends BaseApiController {
     return success("Conversation unmuted");
   }
 
+  @PutMapping("/messages/{uuid}/reactions")
+  public ResponseEntity<BaseResponse<Void>> addReaction(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid,
+      @RequestBody ReactionRequest request) {
+
+    Message message = messageRepository.findByMessageUuid(uuid)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "MESSAGE_NOT_FOUND", "Message not found"));
+
+    if (!conversationService.isParticipant(message.getConversationId(), userId)) {
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Not a participant");
+    }
+
+    messageService.addReaction(userId, message.getMessageId(), request.emoji());
+
+    Conversation conv = conversationRepository.findById(message.getConversationId()).orElse(null);
+    if (conv != null) {
+      messagingTemplate.convertAndSend("/topic/chat/" + conv.getConversationUuid() + "/reactions",
+          Map.of("messageUuid", uuid, "emoji", request.emoji(), "userUuid", resolveUserUuid(userId), "action", "ADD"));
+    }
+
+    return success("Reaction added");
+  }
+
+  @DeleteMapping("/messages/{uuid}/reactions")
+  public ResponseEntity<BaseResponse<Void>> removeReaction(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid) {
+
+    Message message = messageRepository.findByMessageUuid(uuid)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "MESSAGE_NOT_FOUND", "Message not found"));
+
+    if (!conversationService.isParticipant(message.getConversationId(), userId)) {
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Not a participant");
+    }
+
+    messageService.removeReaction(userId, message.getMessageId());
+
+    Conversation conv = conversationRepository.findById(message.getConversationId()).orElse(null);
+    if (conv != null) {
+      messagingTemplate.convertAndSend("/topic/chat/" + conv.getConversationUuid() + "/reactions",
+          Map.of("messageUuid", uuid, "userUuid", resolveUserUuid(userId), "action", "REMOVE"));
+    }
+
+    return success("Reaction removed");
+  }
+
+  @PostMapping("/messages/forward")
+  public ResponseEntity<BaseResponse<MessageResponse>> forwardMessage(
+      @RequestAttribute("X-User-Id") Long userId,
+      @RequestBody ForwardMessageRequest request) {
+
+    Message forwarded = messageService.forwardMessage(userId, request.messageUuid(), request.targetConversationUuid());
+
+    Conversation conv = conversationRepository.findById(forwarded.getConversationId())
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "CONVERSATION_NOT_FOUND", "Conversation not found"));
+
+    Message original = messageRepository.findById(forwarded.getForwardedFromId()).orElse(null);
+    User originalSender = original != null ? userRepository.findById(original.getSenderId()).orElse(null) : null;
+
+    ForwardedInfo forwardedInfo = ForwardedInfo.builder()
+        .originalMessageUuid(original != null ? original.getMessageUuid() : null)
+        .originalSenderUuid(originalSender != null ? originalSender.getUserUuid() : null)
+        .build();
+
+    User sender = userRepository.findById(userId).orElse(null);
+    MessageResponse response = MessageMapper.toResponse(forwarded,
+        sender != null ? sender.getUserUuid() : null, conv.getConversationUuid(),
+        null, null, forwardedInfo, null);
+
+    messagingTemplate.convertAndSend("/topic/chat/" + conv.getConversationUuid(), response);
+    return created(response, "Message forwarded");
+  }
+
   private SendMessageRequest parseMetadata(String metadataJson) {
     try {
       return JsonUtil.stringToModel(metadataJson, SendMessageRequest.class);
@@ -266,7 +349,7 @@ public class ChatController extends BaseApiController {
         .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "CONVERSATION_NOT_FOUND", "Conversation not found"));
   }
 
-  private List<MessageResponse> buildMessageResponses(List<Message> messages, String conversationUuid) {
+  private List<MessageResponse> buildMessageResponses(List<Message> messages, String conversationUuid, Long requestUserId) {
     if (messages.isEmpty()) {
       return List.of();
     }
@@ -278,13 +361,23 @@ public class ChatController extends BaseApiController {
     Map<Long, Attachment> attachmentMap = loadAttachments(messages);
     Map<Long, Message> replyMap = loadReplies(messages);
 
+    // Batch fetch reactions
+    List<Long> messageIds = messages.stream().map(Message::getMessageId).toList();
+    List<MessageReaction> allReactions = reactionRepository.findAllByMessageIdIn(messageIds);
+    Map<Long, List<MessageReaction>> reactionsByMessage = allReactions.stream()
+        .collect(Collectors.groupingBy(MessageReaction::getMessageId));
+
+    // Batch fetch forwarded originals
+    Map<Long, Message> forwardMap = loadForwardedOriginals(messages);
+
     return messages.stream()
-        .map(m -> mapMessage(m, conversationUuid, userMap, attachmentMap, replyMap))
+        .map(m -> mapMessage(m, conversationUuid, userMap, attachmentMap, replyMap, reactionsByMessage, forwardMap, requestUserId))
         .toList();
   }
 
   private MessageResponse mapMessage(Message m, String conversationUuid,
-      Map<Long, User> userMap, Map<Long, Attachment> attachmentMap, Map<Long, Message> replyMap) {
+      Map<Long, User> userMap, Map<Long, Attachment> attachmentMap, Map<Long, Message> replyMap,
+      Map<Long, List<MessageReaction>> reactionsByMessage, Map<Long, Message> forwardMap, Long requestUserId) {
 
     User sender = userMap.get(m.getSenderId());
     String senderUuid = sender != null ? sender.getUserUuid() : null;
@@ -297,7 +390,24 @@ public class ChatController extends BaseApiController {
         ? buildReplyResponse(replyMap.get(m.getReplyToMessageId()), userMap)
         : null;
 
-    return MessageMapper.toResponse(m, senderUuid, conversationUuid, attResp, replyResp);
+    // Build reactions summary
+    List<ReactionSummary> reactions = buildReactionSummary(reactionsByMessage.get(m.getMessageId()), requestUserId);
+
+    // Build forwarded info
+    ForwardedInfo forwardedInfo = null;
+    if (m.getForwardedFromId() != null) {
+      Message original = forwardMap.get(m.getForwardedFromId());
+      if (original != null) {
+        User origSender = userMap.getOrDefault(original.getSenderId(),
+            userRepository.findById(original.getSenderId()).orElse(null));
+        forwardedInfo = ForwardedInfo.builder()
+            .originalMessageUuid(original.getMessageUuid())
+            .originalSenderUuid(origSender != null ? origSender.getUserUuid() : null)
+            .build();
+      }
+    }
+
+    return MessageMapper.toResponse(m, senderUuid, conversationUuid, attResp, replyResp, forwardedInfo, reactions);
   }
 
   private ReplyToResponse buildReplyResponse(Message replyMsg, Map<Long, User> userMap) {
@@ -318,5 +428,29 @@ public class ChatController extends BaseApiController {
     if (ids.isEmpty()) return Map.of();
     return messageRepository.findAllById(ids).stream()
         .collect(Collectors.toMap(Message::getMessageId, Function.identity()));
+  }
+
+  private Map<Long, Message> loadForwardedOriginals(List<Message> messages) {
+    List<Long> ids = messages.stream().map(Message::getForwardedFromId).filter(Objects::nonNull).distinct().toList();
+    if (ids.isEmpty()) return Map.of();
+    return messageRepository.findAllById(ids).stream()
+        .collect(Collectors.toMap(Message::getMessageId, Function.identity()));
+  }
+
+  private List<ReactionSummary> buildReactionSummary(List<MessageReaction> reactions, Long requestUserId) {
+    if (reactions == null || reactions.isEmpty()) return null;
+    return reactions.stream()
+        .collect(Collectors.groupingBy(MessageReaction::getEmoji))
+        .entrySet().stream()
+        .map(e -> ReactionSummary.builder()
+            .emoji(e.getKey())
+            .count(e.getValue().size())
+            .reactedByMe(e.getValue().stream().anyMatch(r -> r.getUserId().equals(requestUserId)))
+            .build())
+        .toList();
+  }
+
+  private String resolveUserUuid(Long userId) {
+    return userRepository.findById(userId).map(User::getUserUuid).orElse(null);
   }
 }

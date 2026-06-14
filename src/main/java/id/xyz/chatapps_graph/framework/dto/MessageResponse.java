@@ -2,6 +2,7 @@ package id.xyz.chatapps_graph.framework.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.OffsetDateTime;
+import java.util.List;
 import lombok.Builder;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -14,6 +15,8 @@ public record MessageResponse(
     String content,
     AttachmentResponse attachment,
     ReplyToResponse replyTo,
+    ForwardedInfo forwardedFrom,
+    List<ReactionSummary> reactions,
     Integer status,
     OffsetDateTime createdAt
 ) {}

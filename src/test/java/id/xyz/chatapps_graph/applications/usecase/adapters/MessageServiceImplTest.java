@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
+import id.xyz.chatapps_graph.applications.usecase.RateLimitService;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
 import id.xyz.chatapps_graph.domain.entity.Conversation;
 import id.xyz.chatapps_graph.domain.entity.ConversationParticipant;
@@ -47,6 +48,7 @@ class MessageServiceImplTest {
   @Mock private AttachmentService attachmentService;
   @Mock private AttachmentRepository attachmentRepository;
   @Mock private UserRepository userRepository;
+  @Mock private RateLimitService rateLimitService;
 
   @InjectMocks private MessageServiceImpl messageService;
 

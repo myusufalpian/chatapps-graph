@@ -3,9 +3,11 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
 import id.xyz.chatapps_graph.applications.usecase.MessageService;
+import id.xyz.chatapps_graph.applications.usecase.RateLimitService;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
 import id.xyz.chatapps_graph.domain.entity.Conversation;
 import id.xyz.chatapps_graph.domain.entity.Message;
+import id.xyz.chatapps_graph.domain.entity.MessageReaction;
 import id.xyz.chatapps_graph.domain.entity.MessageReceipt;
 import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.enums.DeleteMode;
@@ -13,6 +15,7 @@ import id.xyz.chatapps_graph.domain.enums.MessageStatus;
 import id.xyz.chatapps_graph.domain.enums.ReceiptStatus;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
 import id.xyz.chatapps_graph.domain.repository.ConversationParticipantRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageReactionRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageReceiptRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
@@ -40,11 +43,17 @@ public class MessageServiceImpl implements MessageService {
   private final AttachmentService attachmentService;
   private final AttachmentRepository attachmentRepository;
   private final UserRepository userRepository;
+  private final RateLimitService rateLimitService;
+  private final MessageReactionRepository reactionRepository;
 
   @Override
   @Transactional
   public Message sendMessage(Long senderId, String recipientUuid, String conversationUuid,
       String messageType, String content, Long attachmentId, String replyToMessageUuid) {
+
+    if (rateLimitService.isChatRateLimited(senderId)) {
+      throw new GeneralException(429, "RATE_LIMITED", "Too many messages, try again later");
+    }
 
     Conversation conversation = resolveConversation(senderId, recipientUuid, conversationUuid);
     validateParticipant(conversation.getConversationId(), senderId);
@@ -178,6 +187,63 @@ public class MessageServiceImpl implements MessageService {
             .status(ReceiptStatus.SENT.getValue())
             .isDeletedForMe(false)
             .build()));
+  }
+
+  @Override
+  @Transactional
+  public Message forwardMessage(Long userId, String messageUuid, String targetConversationUuid) {
+    if (rateLimitService.isChatRateLimited(userId)) {
+      throw new GeneralException(429, "RATE_LIMITED", "Too many messages, try again later");
+    }
+
+    Message original = messageRepository.findByMessageUuid(messageUuid)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "MESSAGE_NOT_FOUND", "Message not found"));
+
+    // Validate user is participant in source conversation
+    validateParticipant(original.getConversationId(), userId);
+
+    Conversation target = conversationService.findConversationByUuid(targetConversationUuid);
+    validateParticipant(target.getConversationId(), userId);
+
+    Message forwarded = messageRepository.save(Message.builder()
+        .conversationId(target.getConversationId())
+        .senderId(userId)
+        .messageType(original.getMessageType())
+        .content(original.getContent())
+        .attachmentId(original.getAttachmentId())
+        .forwardedFromId(original.getMessageId())
+        .messageStatus(MessageStatus.ACTIVE.getValue())
+        .build());
+
+    createReceipts(forwarded.getMessageId(), target.getConversationId(), userId);
+
+    String preview = truncatePreview(original.getContent(), original.getMessageType());
+    participantRepository.incrementUnreadAndUpdateLastMessage(
+        target.getConversationId(), userId, forwarded.getCreatedAt(), preview, original.getMessageType());
+    participantRepository.updateSenderLastMessage(
+        target.getConversationId(), userId, forwarded.getCreatedAt(), preview, original.getMessageType());
+    participantRepository.autoUnarchive(target.getConversationId(), userId);
+
+    return forwarded;
+  }
+
+  @Override
+  @Transactional
+  public void addReaction(Long userId, Long messageId, String emoji) {
+    if (rateLimitService.isReactionRateLimited(userId)) {
+      throw new GeneralException(429, "RATE_LIMITED", "Too many reactions, try again later");
+    }
+    MessageReaction reaction = reactionRepository.findByMessageIdAndUserId(messageId, userId)
+        .orElse(MessageReaction.builder().messageId(messageId).userId(userId).build());
+    reaction.setEmoji(emoji);
+    reactionRepository.save(reaction);
+  }
+
+  @Override
+  @Transactional
+  public void removeReaction(Long userId, Long messageId) {
+    reactionRepository.findByMessageIdAndUserId(messageId, userId)
+        .ifPresent(reactionRepository::delete);
   }
 
   private String truncatePreview(String content, String messageType) {

@@ -8,6 +8,8 @@ import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.enums.MessageType;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
 import id.xyz.chatapps_graph.framework.dto.MessageResponse;
+import id.xyz.chatapps_graph.framework.dto.TypingEvent;
+import id.xyz.chatapps_graph.framework.dto.TypingRequest;
 import id.xyz.chatapps_graph.framework.dto.WebSocketSendMessage;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -45,13 +47,40 @@ public class ChatWebSocketHandler {
       conv = conversationService.findOrCreatePrivateConversation(userId, recipient != null ? recipient.getUserId() : 0L);
     }
 
-    MessageResponse response = new MessageResponse(message.getMessageUuid(), conv.getConversationUuid(),
-        senderUuid, message.getMessageType(), message.getContent(), null, null,
-        message.getMessageStatus(), message.getCreatedAt());
+    MessageResponse response = MessageResponse.builder()
+        .messageUuid(message.getMessageUuid())
+        .conversationUuid(conv.getConversationUuid())
+        .senderUuid(senderUuid)
+        .messageType(message.getMessageType())
+        .content(message.getContent())
+        .status(message.getMessageStatus())
+        .createdAt(message.getCreatedAt())
+        .build();
 
     messagingTemplate.convertAndSend("/topic/chat/" + conv.getConversationUuid(), response);
 
     messagingTemplate.convertAndSend("/topic/chat/" + conv.getConversationUuid() + "/receipts",
         Map.of("messageUuid", message.getMessageUuid(), "status", "DELIVERED"));
+  }
+
+  @MessageMapping("/chat/typing")
+  public void handleTyping(@Payload TypingRequest request, SimpMessageHeaderAccessor headerAccessor) {
+    Long userId = (Long) headerAccessor.getSessionAttributes().get("X-User-Id");
+    Conversation conv = conversationService.findConversationByUuid(request.conversationUuid());
+
+    if (!conversationService.isParticipant(conv.getConversationId(), userId)) {
+      return;
+    }
+
+    User sender = userRepository.findById(userId).orElse(null);
+    String userUuid = sender != null ? sender.getUserUuid() : null;
+
+    TypingEvent event = TypingEvent.builder()
+        .conversationUuid(request.conversationUuid())
+        .userUuid(userUuid)
+        .isTyping(true)
+        .build();
+
+    messagingTemplate.convertAndSend("/topic/chat/" + request.conversationUuid() + "/typing", event);
   }
 }
