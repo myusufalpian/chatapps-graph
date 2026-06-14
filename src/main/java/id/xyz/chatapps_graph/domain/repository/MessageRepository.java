@@ -1,5 +1,6 @@
 package id.xyz.chatapps_graph.domain.repository;
 
+import static id.xyz.chatapps_graph.infrastructure.constant.SQLConstants.ConversationListSQL;
 import static id.xyz.chatapps_graph.infrastructure.constant.SQLConstants.MessageSQL;
 
 import id.xyz.chatapps_graph.domain.entity.Message;
@@ -21,4 +22,7 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
   @Query(value = MessageSQL.FIND_FIRST_MESSAGES, nativeQuery = true)
   List<Message> findFirstMessages(Long conversationId, Long userId, int limit);
+
+  @Query(value = ConversationListSQL.FIND_LATEST_ACTIVE_MESSAGE_ID, nativeQuery = true)
+  Optional<Long> findLatestActiveMessageId(Long conversationId);
 }

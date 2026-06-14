@@ -2,6 +2,7 @@ package id.xyz.chatapps_graph.framework.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
+import id.xyz.chatapps_graph.applications.usecase.ConversationListService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
 import id.xyz.chatapps_graph.applications.usecase.MessageService;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
@@ -13,15 +14,21 @@ import id.xyz.chatapps_graph.domain.repository.ConversationRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
 import id.xyz.chatapps_graph.framework.dto.BaseResponse;
+import id.xyz.chatapps_graph.framework.dto.ConversationListResponse;
+import id.xyz.chatapps_graph.framework.dto.CreateMultiChatRequest;
 import id.xyz.chatapps_graph.framework.dto.CursorPageResponse;
 import id.xyz.chatapps_graph.framework.dto.MarkReadRequest;
 import id.xyz.chatapps_graph.framework.dto.MessageResponse;
+import id.xyz.chatapps_graph.framework.dto.ParticipantSummary;
 import id.xyz.chatapps_graph.framework.dto.ReplyToResponse;
 import id.xyz.chatapps_graph.framework.dto.SendMessageRequest;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
+import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.StatusConstants;
 import id.xyz.chatapps_graph.infrastructure.mapper.AttachmentMapper;
+import id.xyz.chatapps_graph.infrastructure.mapper.ConversationMapper;
 import id.xyz.chatapps_graph.infrastructure.mapper.MessageMapper;
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil;
+import id.xyz.chatapps_graph.infrastructure.utility.JsonUtil;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -52,6 +59,7 @@ public class ChatController extends BaseApiController {
   private final MessageService messageService;
   private final AttachmentService attachmentService;
   private final ConversationService conversationService;
+  private final ConversationListService conversationListService;
   private final ConversationRepository conversationRepository;
   private final UserRepository userRepository;
   private final AttachmentRepository attachmentRepository;
@@ -147,9 +155,104 @@ public class ChatController extends BaseApiController {
     return success("Marked as read");
   }
 
+  @GetMapping("/conversations")
+  public ResponseEntity<BaseResponse<ConversationListResponse>> listConversations(
+      @RequestAttribute("X-User-Id") Long userId,
+      @RequestParam(value = "filter", defaultValue = "ALL") String filter,
+      @RequestParam(value = "cursor", required = false) String cursor,
+      @RequestParam(value = "limit", defaultValue = "20") int limit) {
+
+    ConversationListResponse response = conversationListService.listConversations(userId, filter, cursor, limit);
+    return success(response, "Conversations retrieved");
+  }
+
+  @PostMapping("/conversations/multi-chat")
+  public ResponseEntity<BaseResponse<Map<String, Object>>> createMultiChat(
+      @RequestAttribute("X-User-Id") Long userId,
+      @RequestBody CreateMultiChatRequest request) {
+
+    List<String> participantUuids = request.participantUuids();
+    if (participantUuids == null || participantUuids.isEmpty()) {
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_REQUEST",
+          "participantUuids is required");
+    }
+
+    // Resolve user IDs from UUIDs
+    List<User> users = participantUuids.stream()
+        .map(uuid -> userRepository.findUserByUserUuidAndUserStatus(uuid, StatusConstants.ACTIVE)
+            .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User not found: " + uuid)))
+        .toList();
+
+    List<Long> allParticipantIds = new java.util.ArrayList<>(users.stream().map(User::getUserId).toList());
+    if (!allParticipantIds.contains(userId)) {
+      allParticipantIds.add(userId);
+    }
+
+    Conversation conversation = conversationService.createMultiChat(userId, allParticipantIds);
+
+    // Build participant summary
+    List<User> allUsers = userRepository.findAllById(allParticipantIds);
+    List<ParticipantSummary> participants = allUsers.stream()
+        .map(ConversationMapper::toParticipantSummary)
+        .toList();
+
+    return created(Map.of(
+        "conversationUuid", conversation.getConversationUuid(),
+        "participants", participants
+    ), "Multi-chat created");
+  }
+
+  @PutMapping("/conversations/{uuid}/pin")
+  public ResponseEntity<BaseResponse<Void>> pinConversation(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid) {
+    conversationListService.pinConversation(userId, uuid);
+    return success("Conversation pinned");
+  }
+
+  @DeleteMapping("/conversations/{uuid}/pin")
+  public ResponseEntity<BaseResponse<Void>> unpinConversation(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid) {
+    conversationListService.unpinConversation(userId, uuid);
+    return success("Conversation unpinned");
+  }
+
+  @PutMapping("/conversations/{uuid}/archive")
+  public ResponseEntity<BaseResponse<Void>> archiveConversation(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid) {
+    conversationListService.archiveConversation(userId, uuid);
+    return success("Conversation archived");
+  }
+
+  @DeleteMapping("/conversations/{uuid}/archive")
+  public ResponseEntity<BaseResponse<Void>> unarchiveConversation(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid) {
+    conversationListService.unarchiveConversation(userId, uuid);
+    return success("Conversation unarchived");
+  }
+
+  @PutMapping("/conversations/{uuid}/mute")
+  public ResponseEntity<BaseResponse<Void>> muteConversation(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid) {
+    conversationListService.muteConversation(userId, uuid);
+    return success("Conversation muted");
+  }
+
+  @DeleteMapping("/conversations/{uuid}/mute")
+  public ResponseEntity<BaseResponse<Void>> unmuteConversation(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid) {
+    conversationListService.unmuteConversation(userId, uuid);
+    return success("Conversation unmuted");
+  }
+
   private SendMessageRequest parseMetadata(String metadataJson) {
     try {
-      return objectMapper.readValue(metadataJson, SendMessageRequest.class);
+      return JsonUtil.stringToModel(metadataJson, SendMessageRequest.class);
     } catch (Exception e) {
       throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_METADATA", "Invalid metadata JSON");
     }

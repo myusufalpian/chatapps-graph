@@ -8,6 +8,7 @@ import id.xyz.chatapps_graph.domain.repository.ConversationParticipantRepository
 import id.xyz.chatapps_graph.domain.repository.ConversationRepository;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import java.time.OffsetDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -62,6 +63,33 @@ public class ConversationServiceImpl implements ConversationService {
         .userId(userIdB)
         .joinedAt(now)
         .build());
+
+    return conversation;
+  }
+
+  @Override
+  @Transactional
+  public Conversation createMultiChat(Long creatorId, List<Long> participantUserIds) {
+    if (participantUserIds.size() < 3) {
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "MIN_PARTICIPANTS", "Multi-chat requires at least 3 participants");
+    }
+
+    var now = OffsetDateTime.now();
+
+    Conversation conversation = conversationRepository.save(
+        Conversation.builder()
+            .conversationType(ConversationType.MULTI_CHAT.name())
+            .createdAt(now)
+            .build()
+    );
+
+    for (Long userId : participantUserIds) {
+      participantRepository.save(ConversationParticipant.builder()
+          .conversationId(conversation.getConversationId())
+          .userId(userId)
+          .joinedAt(now)
+          .build());
+    }
 
     return conversation;
   }

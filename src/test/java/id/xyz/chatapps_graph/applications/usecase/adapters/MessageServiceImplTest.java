@@ -190,7 +190,7 @@ class MessageServiceImplTest {
     messageService.deleteMessage(MESSAGE_UUID, SENDER_ID, "FOR_ALL");
 
     ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
-    verify(messageRepository).save(captor.capture());
+    verify(messageRepository).saveAndFlush(captor.capture());
     assertEquals(MessageStatus.DELETED.getValue(), captor.getValue().getMessageStatus());
   }
 
