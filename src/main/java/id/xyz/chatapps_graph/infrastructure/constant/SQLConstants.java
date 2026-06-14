@@ -132,4 +132,55 @@ public class SQLConstants {
         "WHERE m.conversation_id = :conversationId AND m.message_status = 0 " +
         "ORDER BY m.created_at DESC, m.message_id DESC LIMIT 1";
   }
+
+  @UtilityClass
+  public static class MessageSearchSQL {
+    public static final String SEARCH_FIRST_PAGE =
+        "SELECT m.* FROM message m " +
+        "JOIN conversation_participant cp ON cp.conversation_id = m.conversation_id AND cp.user_id = :userId " +
+        "LEFT JOIN message_receipt mr ON mr.message_id = m.message_id AND mr.user_id = :userId " +
+        "WHERE m.search_vector @@ plainto_tsquery('simple', :query) " +
+        "AND m.message_status = 0 " +
+        "AND (mr.is_deleted_for_me IS NULL OR mr.is_deleted_for_me = false) " +
+        "AND m.created_at > now() - interval '1 year' " +
+        "ORDER BY m.created_at DESC, m.message_id DESC LIMIT :limit";
+
+    public static final String SEARCH_WITH_CURSOR =
+        "SELECT m.* FROM message m " +
+        "JOIN conversation_participant cp ON cp.conversation_id = m.conversation_id AND cp.user_id = :userId " +
+        "LEFT JOIN message_receipt mr ON mr.message_id = m.message_id AND mr.user_id = :userId " +
+        "WHERE m.search_vector @@ plainto_tsquery('simple', :query) " +
+        "AND m.message_status = 0 " +
+        "AND (mr.is_deleted_for_me IS NULL OR mr.is_deleted_for_me = false) " +
+        "AND m.created_at > now() - interval '1 year' " +
+        "AND (m.created_at < :cursorTs OR (m.created_at = :cursorTs AND m.message_id < :cursorId)) " +
+        "ORDER BY m.created_at DESC, m.message_id DESC LIMIT :limit";
+
+    public static final String SEARCH_IN_CONVERSATION =
+        "SELECT m.* FROM message m " +
+        "JOIN conversation_participant cp ON cp.conversation_id = m.conversation_id AND cp.user_id = :userId " +
+        "LEFT JOIN message_receipt mr ON mr.message_id = m.message_id AND mr.user_id = :userId " +
+        "WHERE m.search_vector @@ plainto_tsquery('simple', :query) " +
+        "AND m.conversation_id = :conversationId " +
+        "AND m.message_status = 0 " +
+        "AND (mr.is_deleted_for_me IS NULL OR mr.is_deleted_for_me = false) " +
+        "ORDER BY m.created_at DESC, m.message_id DESC LIMIT :limit";
+
+    public static final String SEARCH_IN_CONVERSATION_WITH_CURSOR =
+        "SELECT m.* FROM message m " +
+        "JOIN conversation_participant cp ON cp.conversation_id = m.conversation_id AND cp.user_id = :userId " +
+        "LEFT JOIN message_receipt mr ON mr.message_id = m.message_id AND mr.user_id = :userId " +
+        "WHERE m.search_vector @@ plainto_tsquery('simple', :query) " +
+        "AND m.conversation_id = :conversationId " +
+        "AND m.message_status = 0 " +
+        "AND (mr.is_deleted_for_me IS NULL OR mr.is_deleted_for_me = false) " +
+        "AND (m.created_at < :cursorTs OR (m.created_at = :cursorTs AND m.message_id < :cursorId)) " +
+        "ORDER BY m.created_at DESC, m.message_id DESC LIMIT :limit";
+  }
+
+  @UtilityClass
+  public static class UserPresenceSQL {
+    public static final String UPDATE_LAST_SEEN =
+        "UPDATE users SET last_seen_at = now() WHERE user_id = :userId";
+  }
 }

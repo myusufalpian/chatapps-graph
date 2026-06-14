@@ -19,4 +19,6 @@ public interface MessageService {
   void addReaction(Long userId, Long messageId, String emoji);
 
   void removeReaction(Long userId, Long messageId);
+
+  List<Message> searchMessages(Long userId, String query, String conversationUuid, String cursor, int limit);
 }

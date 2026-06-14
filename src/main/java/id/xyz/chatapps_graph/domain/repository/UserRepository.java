@@ -1,5 +1,6 @@
 package id.xyz.chatapps_graph.domain.repository;
 
+import static id.xyz.chatapps_graph.infrastructure.constant.SQLConstants.UserPresenceSQL;
 import static id.xyz.chatapps_graph.infrastructure.constant.SQLConstants.UserSQL;
 
 import id.xyz.chatapps_graph.domain.entity.User;
@@ -8,6 +9,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
@@ -26,4 +28,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
   @Query(nativeQuery = true, value = UserSQL.GET_USER_DETAIL_BY_USER_ID_AND_USER_STATUS)
   Optional<UserDetailDTO> getUserDetailByUserId(Long userId, Integer userStatus);
+
+  @Modifying
+  @Query(value = UserPresenceSQL.UPDATE_LAST_SEEN, nativeQuery = true)
+  void updateLastSeenAt(Long userId);
 }

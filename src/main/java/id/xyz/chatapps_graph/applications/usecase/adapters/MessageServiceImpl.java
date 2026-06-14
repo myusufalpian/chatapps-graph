@@ -246,6 +246,29 @@ public class MessageServiceImpl implements MessageService {
         .ifPresent(reactionRepository::delete);
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public List<Message> searchMessages(Long userId, String query, String conversationUuid, String cursor, int limit) {
+    if (query == null || query.isBlank()) {
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_QUERY", "Search query is required");
+    }
+    int fetchLimit = Math.min(limit, 50) + 1;
+    CursorPosition cursorPosition = CursorUtil.parse(cursor);
+
+    if (conversationUuid != null && !conversationUuid.isBlank()) {
+      Conversation conv = conversationService.findConversationByUuid(conversationUuid);
+      if (cursorPosition != null) {
+        return messageRepository.searchMessagesInConversationWithCursor(userId, query, conv.getConversationId(), cursorPosition.timestamp(), cursorPosition.id(), fetchLimit);
+      }
+      return messageRepository.searchMessagesInConversation(userId, query, conv.getConversationId(), fetchLimit);
+    }
+
+    if (cursorPosition != null) {
+      return messageRepository.searchMessagesWithCursor(userId, query, cursorPosition.timestamp(), cursorPosition.id(), fetchLimit);
+    }
+    return messageRepository.searchMessages(userId, query, fetchLimit);
+  }
+
   private String truncatePreview(String content, String messageType) {
     if (content == null || content.isBlank()) {
       return messageType;

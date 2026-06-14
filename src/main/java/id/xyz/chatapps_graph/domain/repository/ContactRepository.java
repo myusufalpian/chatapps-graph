@@ -20,4 +20,6 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
 
   @EntityGraph(attributePaths = {"contactUser", "contactUser.about"})
   List<Contact> findByOwnerUserIdAndContactUserUserIdIn(Long ownerUserId, List<Long> contactUserIds);
+
+  boolean existsByOwnerUserIdAndContactUserUserId(Long ownerUserId, Long contactUserId);
 }
