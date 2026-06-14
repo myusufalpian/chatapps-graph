@@ -25,9 +25,11 @@ import id.xyz.chatapps_graph.framework.dto.ForwardedInfo;
 import id.xyz.chatapps_graph.framework.dto.MarkReadRequest;
 import id.xyz.chatapps_graph.framework.dto.MessageResponse;
 import id.xyz.chatapps_graph.framework.dto.ParticipantSummary;
+import id.xyz.chatapps_graph.framework.dto.MessageSearchResponse;
 import id.xyz.chatapps_graph.framework.dto.ReactionRequest;
 import id.xyz.chatapps_graph.framework.dto.ReactionSummary;
 import id.xyz.chatapps_graph.framework.dto.ReplyToResponse;
+import id.xyz.chatapps_graph.framework.dto.SearchResultItem;
 import id.xyz.chatapps_graph.framework.dto.SendMessageRequest;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.StatusConstants;
@@ -45,6 +47,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -175,13 +179,61 @@ public class ChatController extends BaseApiController {
     return success(response, "Conversations retrieved");
   }
 
+  @GetMapping("/messages/search")
+  public ResponseEntity<BaseResponse<MessageSearchResponse>> searchMessages(
+      @RequestAttribute("X-User-Id") Long userId,
+      @RequestParam("q") String query,
+      @RequestParam(value = "limit", defaultValue = "20") int limit,
+      @RequestParam(value = "cursor", required = false) String cursor,
+      @RequestParam(value = "conversationUuid", required = false) String conversationUuid) {
+
+    if (StringUtils.hasLength(query)) {
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_QUERY", "Search query is required");
+    }
+
+    int fetchLimit = Math.min(limit, 50);
+    List<Message> messages = messageService.searchMessages(userId, query, conversationUuid, cursor, fetchLimit);
+
+    boolean hasMore = messages.size() > fetchLimit;
+    List<Message> resultMessages = hasMore ? messages.subList(0, fetchLimit) : messages;
+
+    // Batch fetch users and conversations
+    Map<Long, User> userMap = userRepository.findAllById(
+        resultMessages.stream().map(Message::getSenderId).distinct().toList()
+    ).stream().collect(Collectors.toMap(User::getUserId, Function.identity()));
+
+    Map<Long, Conversation> convMap = conversationRepository.findAllById(
+        resultMessages.stream().map(Message::getConversationId).distinct().toList()
+    ).stream().collect(Collectors.toMap(Conversation::getConversationId, Function.identity()));
+
+    List<SearchResultItem> results = resultMessages.stream()
+        .map(m -> SearchResultItem.builder()
+            .messageUuid(m.getMessageUuid())
+            .conversationUuid(convMap.containsKey(m.getConversationId()) ? convMap.get(m.getConversationId()).getConversationUuid() : null)
+            .senderUuid(userMap.containsKey(m.getSenderId()) ? userMap.get(m.getSenderId()).getUserUuid() : null)
+            .content(m.getContent())
+            .messageType(m.getMessageType())
+            .createdAt(m.getCreatedAt())
+            .build())
+        .toList();
+
+    String nextCursor = null;
+    if (hasMore) {
+      Message last = resultMessages.getLast();
+      nextCursor = CursorUtil.encode(last.getCreatedAt(), last.getMessageId());
+    }
+
+    return success(MessageSearchResponse.builder()
+        .results(results).nextCursor(nextCursor).hasMore(hasMore).build(), "Search results");
+  }
+
   @PostMapping("/conversations/multi-chat")
   public ResponseEntity<BaseResponse<Map<String, Object>>> createMultiChat(
       @RequestAttribute("X-User-Id") Long userId,
       @RequestBody CreateMultiChatRequest request) {
 
     List<String> participantUuids = request.participantUuids();
-    if (participantUuids == null || participantUuids.isEmpty()) {
+    if (CollectionUtils.isEmpty(participantUuids)) {
       throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_REQUEST",
           "participantUuids is required");
     }

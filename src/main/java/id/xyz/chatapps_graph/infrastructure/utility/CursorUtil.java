@@ -1,6 +1,7 @@
 package id.xyz.chatapps_graph.infrastructure.utility;
 
 import java.time.OffsetDateTime;
+import org.springframework.util.StringUtils;
 
 public class CursorUtil {
 
@@ -9,7 +10,7 @@ public class CursorUtil {
   private CursorUtil() {}
 
   public static CursorPosition parse(String cursor) {
-    if (cursor == null || cursor.isBlank()) {
+    if (!StringUtils.hasLength(cursor) || cursor.isBlank()) {
       return null;
     }
     int lastUnderscore = cursor.lastIndexOf('_');

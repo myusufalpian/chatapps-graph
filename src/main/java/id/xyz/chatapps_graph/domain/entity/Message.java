@@ -14,6 +14,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.util.StringUtils;
 
 @Entity
 @Table(name = "message")
@@ -61,7 +62,7 @@ public class Message {
 
   @PrePersist
   void prePersist() {
-    if (messageUuid == null) messageUuid = UUID.randomUUID().toString();
+    if (!StringUtils.hasLength(messageUuid)) messageUuid = UUID.randomUUID().toString();
     if (createdAt == null) createdAt = OffsetDateTime.now();
   }
 }

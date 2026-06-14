@@ -3,8 +3,11 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 import id.xyz.chatapps_graph.applications.usecase.ProfileService;
 import id.xyz.chatapps_graph.domain.entity.Contact;
 import id.xyz.chatapps_graph.domain.entity.User;
+import id.xyz.chatapps_graph.domain.enums.PresenceStatus;
+import id.xyz.chatapps_graph.domain.enums.PresenceVisibility;
 import id.xyz.chatapps_graph.domain.repository.ContactRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
+import id.xyz.chatapps_graph.framework.dto.PresenceResponse;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.StatusConstants;
 import java.time.OffsetDateTime;
@@ -27,6 +30,7 @@ public class ProfileServiceImpl implements ProfileService {
   private static final int MAX_ABOUT_DESC_LENGTH = 500;
   private static final int MAX_PHOTO_URL_LENGTH = 2048;
   private static final int MAX_SYNC_PHONE_NUMBERS = 500;
+  private static final long ONLINE_THRESHOLD_MINUTES = 2;
 
   private final UserRepository userRepository;
   private final ContactRepository contactRepository;
@@ -126,10 +130,7 @@ public class ProfileServiceImpl implements ProfileService {
       if (existing != null) {
         result.add(existing);
       } else {
-        Contact contact = new Contact();
-        contact.setOwner(owner);
-        contact.setContactUser(target);
-        contact.setDisplayName(target.getUserFullName());
+        Contact contact = Contact.builder().owner(owner).contactUser(target).displayName(target.getUserFullName()).build();
         contact.setCreatedAt(OffsetDateTime.now());
         contact.setCreatedBy(owner.getUserUuid());
         newContacts.add(contact);
@@ -159,6 +160,43 @@ public class ProfileServiceImpl implements ProfileService {
   private User findActiveUserByPhone(String phone) {
     return userRepository.findUserByUserPhoneAndUserStatus(phone, StatusConstants.ACTIVE)
         .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User not found"));
+  }
+
+  @Override
+  @Transactional
+  public void updatePresence(Long userId) {
+    userRepository.updateLastSeenAt(userId);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public PresenceResponse getPresence(Long requesterId, String targetUuid) {
+    User target = userRepository.findUserByUserUuidAndUserStatus(targetUuid, StatusConstants.ACTIVE)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User not found"));
+
+    String visibility = target.getPresenceVisibility() != null
+        ? target.getPresenceVisibility() : PresenceVisibility.EVERYONE.name();
+
+    if (PresenceVisibility.NOBODY.name().equals(visibility)) {
+      return PresenceResponse.builder().status(PresenceStatus.UNKNOWN.name()).build();
+    }
+
+    if (PresenceVisibility.CONTACTS_ONLY.name().equals(visibility)) {
+      boolean isContact = contactRepository.existsByOwnerUserIdAndContactUserUserId(target.getUserId(), requesterId);
+      if (!isContact) {
+        return PresenceResponse.builder().status(PresenceStatus.UNKNOWN.name()).build();
+      }
+    }
+
+    if (target.getLastSeenAt() == null) {
+      return PresenceResponse.builder().status(PresenceStatus.OFFLINE.name()).build();
+    }
+
+    boolean isOnline = target.getLastSeenAt().isAfter(OffsetDateTime.now().minusMinutes(ONLINE_THRESHOLD_MINUTES));
+    return PresenceResponse.builder()
+        .status(isOnline ? PresenceStatus.ONLINE.name() : PresenceStatus.OFFLINE.name())
+        .lastSeenAt(isOnline ? null : target.getLastSeenAt())
+        .build();
   }
 
   private void validateLength(String value, int max, String fieldName) {

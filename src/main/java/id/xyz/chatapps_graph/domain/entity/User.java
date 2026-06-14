@@ -55,4 +55,10 @@ public class User extends BaseEntity {
 
   @Column(name = "hide_read_receipt", nullable = false)
   private Boolean hideReadReceipt;
+
+  @Column(name = "last_seen_at")
+  private java.time.OffsetDateTime lastSeenAt;
+
+  @Column(name = "presence_visibility", length = 20)
+  private String presenceVisibility;
 }
