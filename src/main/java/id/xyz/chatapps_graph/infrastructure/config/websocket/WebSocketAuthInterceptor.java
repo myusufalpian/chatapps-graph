@@ -17,6 +17,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 @Slf4j
 @Component
@@ -34,7 +35,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
       String authHeader = accessor.getFirstNativeHeader("Authorization");
 
-      if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+      if (!StringUtils.hasLength(authHeader) || !authHeader.startsWith("Bearer ")) {
         throw new AuthenticationCredentialsNotFoundException("Missing or invalid Authorization header");
       }
 

@@ -30,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Slf4j
 @Service
@@ -146,7 +147,7 @@ public class MessageServiceImpl implements MessageService {
   }
 
   private Conversation resolveConversation(Long senderId, String recipientUuid, String conversationUuid) {
-    if (conversationUuid != null && !conversationUuid.isBlank()) {
+    if (StringUtils.hasLength(conversationUuid)) {
       return conversationService.findConversationByUuid(conversationUuid);
     }
     User recipient = userRepository.findUserByUserUuidAndUserStatus(recipientUuid, StatusConstants.ACTIVE)
@@ -161,7 +162,7 @@ public class MessageServiceImpl implements MessageService {
   }
 
   private Long resolveReplyTo(String replyToMessageUuid) {
-    if (replyToMessageUuid == null || replyToMessageUuid.isBlank()) {
+    if (StringUtils.hasLength(replyToMessageUuid)) {
       return null;
     }
     return messageRepository.findByMessageUuid(replyToMessageUuid)
@@ -249,13 +250,13 @@ public class MessageServiceImpl implements MessageService {
   @Override
   @Transactional(readOnly = true)
   public List<Message> searchMessages(Long userId, String query, String conversationUuid, String cursor, int limit) {
-    if (query == null || query.isBlank()) {
+    if (StringUtils.hasLength(query)) {
       throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_QUERY", "Search query is required");
     }
     int fetchLimit = Math.min(limit, 50) + 1;
     CursorPosition cursorPosition = CursorUtil.parse(cursor);
 
-    if (conversationUuid != null && !conversationUuid.isBlank()) {
+    if (StringUtils.hasLength(conversationUuid)) {
       Conversation conv = conversationService.findConversationByUuid(conversationUuid);
       if (cursorPosition != null) {
         return messageRepository.searchMessagesInConversationWithCursor(userId, query, conv.getConversationId(), cursorPosition.timestamp(), cursorPosition.id(), fetchLimit);
@@ -270,7 +271,7 @@ public class MessageServiceImpl implements MessageService {
   }
 
   private String truncatePreview(String content, String messageType) {
-    if (content == null || content.isBlank()) {
+    if (StringUtils.hasLength(content)) {
       return messageType;
     }
     return content.length() <= 100 ? content : content.substring(0, 100);

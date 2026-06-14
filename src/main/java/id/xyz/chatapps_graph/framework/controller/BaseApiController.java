@@ -5,6 +5,7 @@ import id.xyz.chatapps_graph.framework.dto.BaseResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 
 /**
  * Abstract base class for all REST API controllers.
@@ -27,7 +28,7 @@ public abstract class BaseApiController {
    */
   protected String extractClientIp(HttpServletRequest request) {
     String xForwardedFor = request.getHeader("X-Forwarded-For");
-    if (xForwardedFor != null && !xForwardedFor.isBlank()) {
+    if (StringUtils.hasLength(xForwardedFor)) {
       return xForwardedFor.split(",")[0].trim();
     }
     return request.getRemoteAddr();

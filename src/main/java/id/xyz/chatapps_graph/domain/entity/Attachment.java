@@ -14,6 +14,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.util.StringUtils;
 
 @Entity
 @Table(name = "attachment")
@@ -55,7 +56,7 @@ public class Attachment {
 
   @PrePersist
   void prePersist() {
-    if (attachmentUuid == null) attachmentUuid = UUID.randomUUID().toString();
+    if (!StringUtils.hasLength(attachmentUuid)) attachmentUuid = UUID.randomUUID().toString();
     if (createdAt == null) createdAt = OffsetDateTime.now();
   }
 }

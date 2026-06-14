@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 @Slf4j
 @Component
@@ -36,7 +37,7 @@ public class KeycloakUserResolver implements UserIdentityResolver {
 
   private Long fallbackByPhone(Jwt jwt, String sub) {
     String phone = jwt.getClaimAsString("preferred_username");
-    if (phone == null) {
+    if (!StringUtils.hasLength(phone)) {
       return null;
     }
 

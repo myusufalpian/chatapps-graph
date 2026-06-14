@@ -14,6 +14,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.util.StringUtils;
 
 @Entity
 @Table(name = "conversation")
@@ -40,7 +41,7 @@ public class Conversation {
 
   @PrePersist
   void prePersist() {
-    if (conversationUuid == null) conversationUuid = UUID.randomUUID().toString();
+    if (!StringUtils.hasLength(conversationUuid)) conversationUuid = UUID.randomUUID().toString();
     if (createdAt == null) createdAt = OffsetDateTime.now();
   }
 }
