@@ -40,6 +40,16 @@ public class FakeRateLimitService implements RateLimitService {
     cooldowns.add(purpose + ":" + phone);
   }
 
+  @Override
+  public boolean isChatRateLimited(Long userId) {
+    return false;
+  }
+
+  @Override
+  public boolean isReactionRateLimited(Long userId) {
+    return false;
+  }
+
   public boolean hasCooldown(String phone, String purpose) {
     return cooldowns.contains(purpose + ":" + phone);
   }

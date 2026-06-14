@@ -136,3 +136,8 @@ resilience4j:
         sliding-window-size: 10
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 3
+
+chat:
+  rate-limit:
+    message-per-minute: 30
+    reaction-per-minute: 60

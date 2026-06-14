@@ -13,4 +13,10 @@ public interface MessageService {
   void deleteMessage(String messageUuid, Long userId, String mode);
 
   void markAsRead(String conversationUuid, Long userId);
+
+  Message forwardMessage(Long userId, String messageUuid, String targetConversationUuid);
+
+  void addReaction(Long userId, Long messageId, String emoji);
+
+  void removeReaction(Long userId, Long messageId);
 }

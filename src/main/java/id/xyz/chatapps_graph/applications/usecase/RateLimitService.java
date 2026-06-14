@@ -8,4 +8,8 @@ public interface RateLimitService {
   boolean isCooldownActive(String phone, String purpose);
 
   void setCooldown(String phone, String purpose);
+
+  boolean isChatRateLimited(Long userId);
+
+  boolean isReactionRateLimited(Long userId);
 }
