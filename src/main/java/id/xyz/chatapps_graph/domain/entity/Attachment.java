@@ -51,6 +51,9 @@ public class Attachment {
   @Column(name = "attachment_type", length = 20, nullable = false)
   private String attachmentType;
 
+  @Column(name = "thumbnail_path", length = 500)
+  private String thumbnailPath;
+
   @Column(name = "created_at", updatable = false)
   private OffsetDateTime createdAt;
 

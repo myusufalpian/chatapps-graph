@@ -6,7 +6,14 @@ import id.xyz.chatapps_graph.domain.entity.Attachment;
 import id.xyz.chatapps_graph.domain.enums.AttachmentType;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
+import id.xyz.chatapps_graph.infrastructure.config.properties.MediaProperties;
+import id.xyz.chatapps_graph.infrastructure.utility.ImageProcessingService;
+import id.xyz.chatapps_graph.infrastructure.utility.VideoThumbnailService;
+import id.xyz.chatapps_graph.infrastructure.utility.ImageProcessingService.ImageProcessingResult;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -18,10 +25,11 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class AttachmentServiceImpl implements AttachmentService {
 
-  private static final long MAX_FILE_SIZE = 15L * 1024 * 1024;
-
   private final FileStoragePort fileStoragePort;
   private final AttachmentRepository attachmentRepository;
+  private final MediaProperties mediaProperties;
+  private final ImageProcessingService imageProcessingService;
+  private final VideoThumbnailService videoThumbnailService;
 
   @Override
   public Attachment validateAndUpload(MultipartFile file, String attachmentType, Long uploaderId, String uploaderUuid) {
@@ -29,12 +37,39 @@ public class AttachmentServiceImpl implements AttachmentService {
     validateFile(file, type);
 
     String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "file";
-    String filePath = "chat/" + uploaderUuid + "/" + System.currentTimeMillis() + "_" + originalFilename;
+    String basePath = "chat/" + uploaderUuid + "/" + System.currentTimeMillis();
+    String filePath = basePath + "_" + originalFilename;
+    String thumbBaseName = basePath.substring(basePath.lastIndexOf('/') + 1);
+    String thumbnailPath = null;
 
     try {
-      fileStoragePort.uploadFile(filePath, file.getInputStream(), file.getContentType(), file.getSize());
+      if (type == AttachmentType.IMAGE) {
+        byte[] rawBytes = file.getBytes();
+        ImageProcessingResult result = imageProcessingService.compressAndThumbnail(
+            new ByteArrayInputStream(rawBytes),
+            mediaProperties.getImage().getMaxDimension(),
+            mediaProperties.getImage().getQuality(),
+            mediaProperties.getImage().getThumbnailDimension(),
+            mediaProperties.getImage().getThumbnailQuality());
+        byte[] compressed = result.compressed();
+        fileStoragePort.uploadFile(filePath, new ByteArrayInputStream(compressed), "image/jpeg", compressed.length);
+
+        byte[] thumbnail = result.thumbnail();
+        String thumbPath = "thumbnails/" + uploaderUuid + "/" + thumbBaseName + "_thumb.jpg";
+        fileStoragePort.uploadFile(thumbPath, new ByteArrayInputStream(thumbnail), "image/jpeg", thumbnail.length);
+        thumbnailPath = thumbPath;
+      } else if (type == AttachmentType.VIDEO) {
+        fileStoragePort.uploadFile(filePath, file.getInputStream(), file.getContentType(), file.getSize());
+        thumbnailPath = generateVideoThumbnail(file, uploaderUuid, thumbBaseName);
+      } else {
+        fileStoragePort.uploadFile(filePath, file.getInputStream(), file.getContentType(), file.getSize());
+      }
+    } catch (OutOfMemoryError e) {
+      log.error("Image processing OOM for file size: {}", file.getSize());
+      throw new GeneralException(HttpStatus.PAYLOAD_TOO_LARGE.value(), "IMAGE_TOO_LARGE",
+          "Image is too large to process");
     } catch (IOException e) {
-      throw new GeneralException(HttpStatus.INTERNAL_SERVER_ERROR.value(), "UPLOAD_FAILED", "Failed to upload file");
+      throw new GeneralException(HttpStatus.INTERNAL_SERVER_ERROR.value(), "UPLOAD_FAILED", "Failed to process and upload file");
     }
 
     return attachmentRepository.save(Attachment.builder()
@@ -44,6 +79,7 @@ public class AttachmentServiceImpl implements AttachmentService {
         .fileSize(file.getSize())
         .contentType(file.getContentType())
         .attachmentType(attachmentType)
+        .thumbnailPath(thumbnailPath)
         .build());
   }
 
@@ -52,9 +88,39 @@ public class AttachmentServiceImpl implements AttachmentService {
     fileStoragePort.deleteFile(filePath);
   }
 
+  private String generateVideoThumbnail(MultipartFile file, String uploaderUuid, String thumbBaseName) {
+    Path tempFile = null;
+    try {
+      tempFile = Files.createTempFile("video_", ".tmp");
+      file.transferTo(tempFile.toFile());
+
+      byte[] thumbnail = videoThumbnailService.extractFirstFrame(tempFile,
+          mediaProperties.getImage().getThumbnailDimension());
+      if (thumbnail == null) {
+        return null;
+      }
+
+      String thumbPath = "thumbnails/" + uploaderUuid + "/" + thumbBaseName + "_thumb.jpg";
+      fileStoragePort.uploadFile(thumbPath, new ByteArrayInputStream(thumbnail), "image/jpeg", thumbnail.length);
+      return thumbPath;
+    } catch (IOException e) {
+      log.warn("Video thumbnail generation failed: {}", e.getMessage());
+      return null;
+    } finally {
+      if (tempFile != null) {
+        try {
+          Files.deleteIfExists(tempFile);
+        } catch (IOException e) {
+          log.warn("Failed to delete temp video file: {}", e.getMessage());
+        }
+      }
+    }
+  }
+
   private void validateFile(MultipartFile file, AttachmentType type) {
-    if (file.getSize() > MAX_FILE_SIZE) {
-      throw new GeneralException(HttpStatus.PAYLOAD_TOO_LARGE.value(), "FILE_TOO_LARGE", "File size exceeds 15MB limit");
+    if (file.getSize() > mediaProperties.getMaxFileSize()) {
+      throw new GeneralException(HttpStatus.PAYLOAD_TOO_LARGE.value(), "FILE_TOO_LARGE",
+          "File size exceeds " + (mediaProperties.getMaxFileSize() / 1024 / 1024) + "MB limit");
     }
     if (!type.isContentTypeAllowed(file.getContentType())) {
       throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_CONTENT_TYPE",

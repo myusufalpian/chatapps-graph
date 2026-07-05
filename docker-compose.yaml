@@ -5,6 +5,10 @@ services:
     container_name: chatapps-api
     ports:
       - "8084:8084"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
     environment:
       - SPRING_PROFILES_ACTIVE=local
       - SPRING_DATA_REDIS_HOST=redis

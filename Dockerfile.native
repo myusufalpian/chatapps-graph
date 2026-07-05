@@ -1,0 +1,11 @@
+# Build native binary OUTSIDE Docker:
+#   ./gradlew nativeCompile -x test
+#
+# Then build this image:
+#   docker build -t chatapps-graph:native .
+
+FROM gcr.io/distroless/base-debian12:nonroot
+WORKDIR /app
+COPY build/native/nativeCompile/chatapps-graph /app/main
+EXPOSE 8084
+ENTRYPOINT ["/app/main"]

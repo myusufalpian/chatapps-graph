@@ -32,6 +32,7 @@ import id.xyz.chatapps_graph.framework.dto.ReplyToResponse;
 import id.xyz.chatapps_graph.framework.dto.SearchResultItem;
 import id.xyz.chatapps_graph.framework.dto.SendMessageRequest;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
+import id.xyz.chatapps_graph.infrastructure.config.properties.MinioProperties;
 import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.StatusConstants;
 import id.xyz.chatapps_graph.infrastructure.mapper.AttachmentMapper;
 import id.xyz.chatapps_graph.infrastructure.mapper.ConversationMapper;
@@ -79,6 +80,7 @@ public class ChatController extends BaseApiController {
   private final MessageRepository messageRepository;
   private final SimpMessagingTemplate messagingTemplate;
   private final ObjectMapper objectMapper;
+  private final MinioProperties minioProperties;
 
   @PostMapping("/messages")
   public ResponseEntity<BaseResponse<MessageResponse>> sendMessage(
@@ -435,7 +437,8 @@ public class ChatController extends BaseApiController {
     String senderUuid = sender != null ? sender.getUserUuid() : null;
 
     var attResp = m.getAttachmentId() != null
-        ? AttachmentMapper.toResponse(attachmentMap.get(m.getAttachmentId()))
+        ? AttachmentMapper.toResponse(attachmentMap.get(m.getAttachmentId()),
+            minioProperties.getEndpoint() + "/" + minioProperties.getBucket())
         : null;
 
     var replyResp = m.getReplyToMessageId() != null
