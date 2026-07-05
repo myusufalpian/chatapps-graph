@@ -50,7 +50,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-aop'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'io.minio:minio:8.6.0'
-    implementation 'org.springframework.boot:spring-boot-starter-graphql'
+    implementation 'com.google.firebase:firebase-admin:9.3.0'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
@@ -100,12 +100,16 @@ jacocoTestReport {
 }
 
 graalvmNative {
+    toolchainDetection = false
     binaries {
         main {
-            buildArgs.add("-J-Xmx4500m")
-            buildArgs.add("--parallelism=2")
-            buildArgs.add("-H:+DeadlockWatchdogExitOnTimeout")
-            buildArgs.add("-H:DeadlockWatchdogInterval=0")
+            buildArgs.addAll(
+                "-J-Xmx3g",
+                "--gc=serial",
+                "--parallelism=2",
+                "--no-fallback",
+                "-march=compatibility"
+            )
         }
     }
 }

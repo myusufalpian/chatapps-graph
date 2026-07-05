@@ -10,6 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 class AttachmentMapperTest {
 
+  private static final String MINIO_BASE_URL = "http://localhost:9000/chat-bucket";
+
   @Test
   @DisplayName("toResponse: maps all fields correctly")
   void toResponse_MapsAllFields() {
@@ -22,7 +24,7 @@ class AttachmentMapperTest {
         .attachmentType("FILE")
         .build();
 
-    AttachmentResponse result = AttachmentMapper.toResponse(attachment);
+    AttachmentResponse result = AttachmentMapper.toResponse(attachment, MINIO_BASE_URL);
 
     assertEquals("att-uuid", result.attachmentUuid());
     assertEquals("document.pdf", result.fileName());
@@ -35,6 +37,6 @@ class AttachmentMapperTest {
   @Test
   @DisplayName("toResponse: null attachment returns null")
   void toResponse_NullAttachment_ReturnsNull() {
-    assertNull(AttachmentMapper.toResponse(null));
+    assertNull(AttachmentMapper.toResponse(null, MINIO_BASE_URL));
   }
 }

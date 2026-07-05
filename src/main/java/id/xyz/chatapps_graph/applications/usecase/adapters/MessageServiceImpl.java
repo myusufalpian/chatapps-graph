@@ -3,6 +3,7 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
 import id.xyz.chatapps_graph.applications.usecase.MessageService;
+import id.xyz.chatapps_graph.applications.usecase.PushNotificationService;
 import id.xyz.chatapps_graph.applications.usecase.RateLimitService;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
 import id.xyz.chatapps_graph.domain.entity.Conversation;
@@ -30,6 +31,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 @Slf4j
@@ -46,6 +49,7 @@ public class MessageServiceImpl implements MessageService {
   private final UserRepository userRepository;
   private final RateLimitService rateLimitService;
   private final MessageReactionRepository reactionRepository;
+  private final PushNotificationService pushNotificationService;
 
   @Override
   @Transactional
@@ -81,6 +85,8 @@ public class MessageServiceImpl implements MessageService {
       participantRepository.updateSenderLastMessage(
           conversation.getConversationId(), senderId, message.getCreatedAt(), preview, messageType);
       participantRepository.autoUnarchive(conversation.getConversationId(), senderId);
+
+      registerPushAfterCommit(message, senderId, conversation.getConversationId());
 
       return message;
     } catch (Exception e) {
@@ -162,7 +168,7 @@ public class MessageServiceImpl implements MessageService {
   }
 
   private Long resolveReplyTo(String replyToMessageUuid) {
-    if (StringUtils.hasLength(replyToMessageUuid)) {
+    if (!StringUtils.hasLength(replyToMessageUuid)) {
       return null;
     }
     return messageRepository.findByMessageUuid(replyToMessageUuid)
@@ -225,6 +231,8 @@ public class MessageServiceImpl implements MessageService {
         target.getConversationId(), userId, forwarded.getCreatedAt(), preview, original.getMessageType());
     participantRepository.autoUnarchive(target.getConversationId(), userId);
 
+    registerPushAfterCommit(forwarded, userId, target.getConversationId());
+
     return forwarded;
   }
 
@@ -250,7 +258,7 @@ public class MessageServiceImpl implements MessageService {
   @Override
   @Transactional(readOnly = true)
   public List<Message> searchMessages(Long userId, String query, String conversationUuid, String cursor, int limit) {
-    if (StringUtils.hasLength(query)) {
+    if (!StringUtils.hasLength(query)) {
       throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_QUERY", "Search query is required");
     }
     int fetchLimit = Math.min(limit, 50) + 1;
@@ -270,8 +278,21 @@ public class MessageServiceImpl implements MessageService {
     return messageRepository.searchMessages(userId, query, fetchLimit);
   }
 
+  private void registerPushAfterCommit(Message message, Long senderId, Long conversationId) {
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          pushNotificationService.sendPushForNewMessage(message, senderId, conversationId);
+        }
+      });
+    } else {
+      pushNotificationService.sendPushForNewMessage(message, senderId, conversationId);
+    }
+  }
+
   private String truncatePreview(String content, String messageType) {
-    if (StringUtils.hasLength(content)) {
+    if (!StringUtils.hasLength(content)) {
       return messageType;
     }
     return content.length() <= 100 ? content : content.substring(0, 100);

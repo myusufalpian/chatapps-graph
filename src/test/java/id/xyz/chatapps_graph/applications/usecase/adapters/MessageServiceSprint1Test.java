@@ -44,6 +44,8 @@ class MessageServiceSprint1Test {
   @Mock private AttachmentRepository attachmentRepository;
   @Mock private UserRepository userRepository;
   @Mock private RateLimitService rateLimitService;
+  @Mock private id.xyz.chatapps_graph.domain.repository.MessageReactionRepository reactionRepository;
+  @Mock private id.xyz.chatapps_graph.applications.usecase.PushNotificationService pushNotificationService;
 
   @InjectMocks private MessageServiceImpl messageService;
 

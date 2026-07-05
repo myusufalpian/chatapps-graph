@@ -58,8 +58,8 @@ spring:
         enabled: true
   servlet:
     multipart:
-      max-file-size: 15MB
-      max-request-size: 15MB
+      max-file-size: 20MB
+      max-request-size: 20MB
   threads:
     virtual:
       enabled: true
@@ -141,3 +141,16 @@ chat:
   rate-limit:
     message-per-minute: 30
     reaction-per-minute: 60
+
+media:
+  max-file-size: 20971520
+  image:
+    max-dimension: 1920
+    quality: 85
+    thumbnail-dimension: 200
+    thumbnail-quality: 60
+  video:
+    thumbnail-timeout-seconds: 10
+
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH:}

@@ -68,7 +68,7 @@ class MessageMapperTest {
         .messageStatus(MessageStatus.ACTIVE.getValue())
         .createdAt(CREATED)
         .build();
-    AttachmentResponse att = new AttachmentResponse("att-uuid", "photo.jpg", "chat/u/1_photo.jpg", 1024L, "image/jpeg", "IMAGE");
+    AttachmentResponse att = new AttachmentResponse("att-uuid", "photo.jpg", "chat/u/1_photo.jpg", 1024L, "image/jpeg", "IMAGE", null);
 
     MessageResponse result = MessageMapper.toResponse(message, "sender", "conv", att, null, null, null);
 
