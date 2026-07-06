@@ -141,6 +141,8 @@ chat:
   rate-limit:
     message-per-minute: 30
     reaction-per-minute: 60
+  edit:
+    max-window-minutes: 30
 
 media:
   max-file-size: 20971520
@@ -154,3 +156,9 @@ media:
 
 firebase:
   credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
+
+group:
+  max-members: 200
+  avatar:
+    max-dimension: 500
+    quality: 85

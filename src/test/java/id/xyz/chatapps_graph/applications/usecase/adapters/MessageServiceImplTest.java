@@ -240,6 +240,8 @@ class MessageServiceImplTest {
   void markAsRead_UpdatesReceipts() {
     Conversation conversation = buildConversation();
     when(conversationService.findConversationByUuid(CONVERSATION_UUID)).thenReturn(conversation);
+    when(userRepository.findById(SENDER_ID)).thenReturn(Optional.of(
+        id.xyz.chatapps_graph.domain.entity.User.builder().userId(SENDER_ID).hideReadReceipt(false).build()));
     when(receiptRepository.markAsReadByConversation(CONVERSATION_ID, SENDER_ID, ReceiptStatus.READ.getValue()))
         .thenReturn(3);
 

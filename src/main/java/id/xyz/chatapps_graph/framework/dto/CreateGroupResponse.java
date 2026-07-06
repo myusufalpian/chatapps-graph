@@ -1,0 +1,9 @@
+package id.xyz.chatapps_graph.framework.dto;
+
+import lombok.Builder;
+
+@Builder
+public record CreateGroupResponse(
+    String groupUuid,
+    String conversationUuid
+) {}

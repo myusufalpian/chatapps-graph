@@ -1,5 +1,6 @@
 package id.xyz.chatapps_graph.framework.controller;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationListService;
@@ -11,6 +12,7 @@ import id.xyz.chatapps_graph.domain.entity.Conversation;
 import id.xyz.chatapps_graph.domain.entity.Message;
 import id.xyz.chatapps_graph.domain.entity.MessageReaction;
 import id.xyz.chatapps_graph.domain.entity.User;
+import id.xyz.chatapps_graph.domain.enums.MessageType;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
 import id.xyz.chatapps_graph.domain.repository.ConversationRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageReactionRepository;
@@ -20,6 +22,7 @@ import id.xyz.chatapps_graph.framework.dto.BaseResponse;
 import id.xyz.chatapps_graph.framework.dto.ConversationListResponse;
 import id.xyz.chatapps_graph.framework.dto.CreateMultiChatRequest;
 import id.xyz.chatapps_graph.framework.dto.CursorPageResponse;
+import id.xyz.chatapps_graph.framework.dto.EditMessageRequest;
 import id.xyz.chatapps_graph.framework.dto.ForwardMessageRequest;
 import id.xyz.chatapps_graph.framework.dto.ForwardedInfo;
 import id.xyz.chatapps_graph.framework.dto.MarkReadRequest;
@@ -32,13 +35,20 @@ import id.xyz.chatapps_graph.framework.dto.ReplyToResponse;
 import id.xyz.chatapps_graph.framework.dto.SearchResultItem;
 import id.xyz.chatapps_graph.framework.dto.SendMessageRequest;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import id.xyz.chatapps_graph.infrastructure.config.properties.MinioProperties;
+import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants;
 import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.StatusConstants;
 import id.xyz.chatapps_graph.infrastructure.mapper.AttachmentMapper;
 import id.xyz.chatapps_graph.infrastructure.mapper.ConversationMapper;
 import id.xyz.chatapps_graph.infrastructure.mapper.MessageMapper;
+import id.xyz.chatapps_graph.infrastructure.service.TranslationService;
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil;
 import id.xyz.chatapps_graph.infrastructure.utility.JsonUtil;
+import id.xyz.chatapps_graph.infrastructure.utility.LocaleResolver;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -68,6 +78,9 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class ChatController extends BaseApiController {
 
+  private static final TypeReference<Map<String, String>> MAP_TYPE_REF =
+      new TypeReference<>() {};
+
   private final MessageService messageService;
   private final AttachmentService attachmentService;
   private final ConversationService conversationService;
@@ -81,6 +94,8 @@ public class ChatController extends BaseApiController {
   private final SimpMessagingTemplate messagingTemplate;
   private final ObjectMapper objectMapper;
   private final MinioProperties minioProperties;
+  private final TranslationService translationService;
+  private final LocaleResolver localeResolver;
 
   @PostMapping("/messages")
   public ResponseEntity<BaseResponse<MessageResponse>> sendMessage(
@@ -91,7 +106,7 @@ public class ChatController extends BaseApiController {
     SendMessageRequest request = parseMetadata(metadataJson);
 
     User sender = userRepository.findById(userId)
-        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User not found"));
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.USER_NOT_FOUND, "User not found"));
 
     Long attachmentId = null;
     if (file != null && !file.isEmpty()) {
@@ -105,7 +120,7 @@ public class ChatController extends BaseApiController {
         attachmentId, request.replyToMessageUuid());
 
     Conversation conv = resolveConversation(request.conversationUuid(), message.getConversationId());
-    MessageResponse response = MessageMapper.toResponse(message, sender.getUserUuid(), conv.getConversationUuid(), null, null, null, null);
+    MessageResponse response = MessageMapper.toResponse(message, sender.getUserUuid(), conv.getConversationUuid(), null, null, null, null, null);
 
     messagingTemplate.convertAndSend("/topic/chat/" + conv.getConversationUuid(), response);
     return created(response, "Message sent");
@@ -116,12 +131,15 @@ public class ChatController extends BaseApiController {
       @RequestAttribute("X-User-Id") Long userId,
       @PathVariable("uuid") String uuid,
       @RequestParam(value = "cursor", required = false) String cursor,
-      @RequestParam(value = "limit", defaultValue = "20") int limit) {
+      @RequestParam(value = "limit", defaultValue = "20") int limit,
+      HttpServletRequest httpRequest) {
 
     Conversation conversation = conversationService.findConversationByUuid(uuid);
     if (!conversationService.isParticipant(conversation.getConversationId(), userId)) {
-      throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Not a participant");
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), ErrorConstants.FORBIDDEN, "Not a participant");
     }
+
+    String locale = localeResolver.resolve(httpRequest);
 
     int fetchLimit = Math.min(limit, 50);
     List<Message> messages = messageService.listMessages(conversation.getConversationId(), userId, cursor, fetchLimit + 1);
@@ -135,7 +153,7 @@ public class ChatController extends BaseApiController {
       nextCursor = CursorUtil.encode(last.getCreatedAt(), last.getMessageId());
     }
 
-    List<MessageResponse> responses = buildMessageResponses(resultMessages, uuid, userId);
+    List<MessageResponse> responses = buildMessageResponses(resultMessages, uuid, userId, locale);
     return success(new CursorPageResponse<>(responses, nextCursor, hasMore), "Messages retrieved");
   }
 
@@ -149,6 +167,25 @@ public class ChatController extends BaseApiController {
     return success("Message deleted");
   }
 
+  @PutMapping("/messages/{uuid}")
+  public ResponseEntity<BaseResponse<MessageResponse>> editMessage(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid,
+      @Valid @RequestBody EditMessageRequest request) {
+
+    Message edited = messageService.editMessage(userId, uuid, request.content());
+
+    Conversation conv = conversationRepository.findById(edited.getConversationId())
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.CONVERSATION_NOT_FOUND, "Conversation not found"));
+
+    User sender = userRepository.findById(userId).orElse(null);
+    MessageResponse response = MessageMapper.toResponse(edited,
+        sender != null ? sender.getUserUuid() : null, conv.getConversationUuid(),
+        null, null, null, null, null);
+
+    return success(response, "Message edited");
+  }
+
   @PutMapping("/messages/read")
   public ResponseEntity<BaseResponse<Void>> markAsRead(
       @RequestAttribute("X-User-Id") Long userId,
@@ -156,13 +193,12 @@ public class ChatController extends BaseApiController {
 
     Conversation conversation = conversationService.findConversationByUuid(request.conversationUuid());
     if (!conversationService.isParticipant(conversation.getConversationId(), userId)) {
-      throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Not a participant");
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), ErrorConstants.FORBIDDEN, "Not a participant");
     }
 
-    User reader = userRepository.findById(userId).orElse(null);
-    messageService.markAsRead(request.conversationUuid(), userId);
+    boolean broadcastRead = messageService.markAsRead(request.conversationUuid(), userId);
 
-    if (reader != null && !Boolean.TRUE.equals(reader.getHideReadReceipt())) {
+    if (broadcastRead) {
       messagingTemplate.convertAndSend("/topic/chat/" + request.conversationUuid() + "/receipts",
           Map.of("userId", userId, "status", "READ", "conversationUuid", request.conversationUuid()));
     }
@@ -189,8 +225,8 @@ public class ChatController extends BaseApiController {
       @RequestParam(value = "cursor", required = false) String cursor,
       @RequestParam(value = "conversationUuid", required = false) String conversationUuid) {
 
-    if (StringUtils.hasLength(query)) {
-      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_QUERY", "Search query is required");
+    if (!StringUtils.hasLength(query)) {
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), ErrorConstants.INVALID_QUERY, "Search query is required");
     }
 
     int fetchLimit = Math.min(limit, 50);
@@ -236,17 +272,17 @@ public class ChatController extends BaseApiController {
 
     List<String> participantUuids = request.participantUuids();
     if (CollectionUtils.isEmpty(participantUuids)) {
-      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_REQUEST",
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), ErrorConstants.INVALID_REQUEST,
           "participantUuids is required");
     }
 
     // Resolve user IDs from UUIDs
     List<User> users = participantUuids.stream()
         .map(uuid -> userRepository.findUserByUserUuidAndUserStatus(uuid, StatusConstants.ACTIVE)
-            .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User not found: " + uuid)))
+            .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.USER_NOT_FOUND, "User not found: " + uuid)))
         .toList();
 
-    List<Long> allParticipantIds = new java.util.ArrayList<>(users.stream().map(User::getUserId).toList());
+    List<Long> allParticipantIds = new ArrayList<>(users.stream().map(User::getUserId).toList());
     if (!allParticipantIds.contains(userId)) {
       allParticipantIds.add(userId);
     }
@@ -320,10 +356,10 @@ public class ChatController extends BaseApiController {
       @RequestBody ReactionRequest request) {
 
     Message message = messageRepository.findByMessageUuid(uuid)
-        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "MESSAGE_NOT_FOUND", "Message not found"));
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.MESSAGE_NOT_FOUND, "Message not found"));
 
     if (!conversationService.isParticipant(message.getConversationId(), userId)) {
-      throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Not a participant");
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), ErrorConstants.FORBIDDEN, "Not a participant");
     }
 
     messageService.addReaction(userId, message.getMessageId(), request.emoji());
@@ -343,10 +379,10 @@ public class ChatController extends BaseApiController {
       @PathVariable("uuid") String uuid) {
 
     Message message = messageRepository.findByMessageUuid(uuid)
-        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "MESSAGE_NOT_FOUND", "Message not found"));
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.MESSAGE_NOT_FOUND, "Message not found"));
 
     if (!conversationService.isParticipant(message.getConversationId(), userId)) {
-      throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Not a participant");
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), ErrorConstants.FORBIDDEN, "Not a participant");
     }
 
     messageService.removeReaction(userId, message.getMessageId());
@@ -368,7 +404,7 @@ public class ChatController extends BaseApiController {
     Message forwarded = messageService.forwardMessage(userId, request.messageUuid(), request.targetConversationUuid());
 
     Conversation conv = conversationRepository.findById(forwarded.getConversationId())
-        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "CONVERSATION_NOT_FOUND", "Conversation not found"));
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.CONVERSATION_NOT_FOUND, "Conversation not found"));
 
     Message original = messageRepository.findById(forwarded.getForwardedFromId()).orElse(null);
     User originalSender = original != null ? userRepository.findById(original.getSenderId()).orElse(null) : null;
@@ -381,7 +417,7 @@ public class ChatController extends BaseApiController {
     User sender = userRepository.findById(userId).orElse(null);
     MessageResponse response = MessageMapper.toResponse(forwarded,
         sender != null ? sender.getUserUuid() : null, conv.getConversationUuid(),
-        null, null, forwardedInfo, null);
+        null, null, forwardedInfo, null, null);
 
     messagingTemplate.convertAndSend("/topic/chat/" + conv.getConversationUuid(), response);
     return created(response, "Message forwarded");
@@ -391,7 +427,7 @@ public class ChatController extends BaseApiController {
     try {
       return JsonUtil.stringToModel(metadataJson, SendMessageRequest.class);
     } catch (Exception e) {
-      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_METADATA", "Invalid metadata JSON");
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), ErrorConstants.INVALID_METADATA, "Invalid metadata JSON");
     }
   }
 
@@ -400,10 +436,10 @@ public class ChatController extends BaseApiController {
       return conversationService.findConversationByUuid(conversationUuid);
     }
     return conversationRepository.findById(conversationId)
-        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "CONVERSATION_NOT_FOUND", "Conversation not found"));
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.CONVERSATION_NOT_FOUND, "Conversation not found"));
   }
 
-  private List<MessageResponse> buildMessageResponses(List<Message> messages, String conversationUuid, Long requestUserId) {
+  private List<MessageResponse> buildMessageResponses(List<Message> messages, String conversationUuid, Long requestUserId, String locale) {
     if (messages.isEmpty()) {
       return List.of();
     }
@@ -411,6 +447,9 @@ public class ChatController extends BaseApiController {
     Map<Long, User> userMap = userRepository.findAllById(
         messages.stream().map(Message::getSenderId).distinct().toList()
     ).stream().collect(Collectors.toMap(User::getUserId, Function.identity()));
+
+    User requester = userRepository.findById(requestUserId).orElse(null);
+    boolean hideReadReceipt = requester != null && Boolean.TRUE.equals(requester.getHideReadReceipt());
 
     Map<Long, Attachment> attachmentMap = loadAttachments(messages);
     Map<Long, Message> replyMap = loadReplies(messages);
@@ -424,14 +463,20 @@ public class ChatController extends BaseApiController {
     // Batch fetch forwarded originals
     Map<Long, Message> forwardMap = loadForwardedOriginals(messages);
 
+    // Build UUID-keyed user map for O(1) system message placeholder resolution
+    Map<String, User> userByUuidMap = userMap.values().stream()
+        .collect(Collectors.toMap(User::getUserUuid, Function.identity(), (a, b) -> a));
+
     return messages.stream()
-        .map(m -> mapMessage(m, conversationUuid, userMap, attachmentMap, replyMap, reactionsByMessage, forwardMap, requestUserId))
+        .map(m -> mapMessage(m, conversationUuid, userMap, userByUuidMap, attachmentMap, replyMap, reactionsByMessage, forwardMap, requestUserId, locale, hideReadReceipt))
         .toList();
   }
 
   private MessageResponse mapMessage(Message m, String conversationUuid,
-      Map<Long, User> userMap, Map<Long, Attachment> attachmentMap, Map<Long, Message> replyMap,
-      Map<Long, List<MessageReaction>> reactionsByMessage, Map<Long, Message> forwardMap, Long requestUserId) {
+      Map<Long, User> userMap, Map<String, User> userByUuidMap,
+      Map<Long, Attachment> attachmentMap, Map<Long, Message> replyMap,
+      Map<Long, List<MessageReaction>> reactionsByMessage, Map<Long, Message> forwardMap,
+      Long requestUserId, String locale, boolean hideReadReceipt) {
 
     User sender = userMap.get(m.getSenderId());
     String senderUuid = sender != null ? sender.getUserUuid() : null;
@@ -462,7 +507,40 @@ public class ChatController extends BaseApiController {
       }
     }
 
-    return MessageMapper.toResponse(m, senderUuid, conversationUuid, attResp, replyResp, forwardedInfo, reactions);
+    // Build displayText for SYSTEM messages
+    String displayText = null;
+    if (MessageType.SYSTEM.name().equals(m.getMessageType()) && m.getContent() != null) {
+      displayText = resolveSystemMessageDisplayText(m.getContent(), userByUuidMap, locale);
+    }
+
+    return MessageMapper.toResponse(m, senderUuid, conversationUuid, attResp, replyResp, forwardedInfo, reactions, displayText);
+  }
+
+  private String resolveSystemMessageDisplayText(String content, Map<String, User> userByUuidMap, String locale) {
+    try {
+      Map<String, String> payload = objectMapper.readValue(content, MAP_TYPE_REF);
+      String event = payload.get("event");
+      if (event == null) return content;
+
+      String actorUuid = payload.get("actorUuid");
+      String targetUuid = payload.get("targetUuid");
+
+      Map<String, String> params = new HashMap<>(2);
+
+      if (actorUuid != null) {
+        User actor = userByUuidMap.get(actorUuid);
+        params.put("actor", actor != null ? actor.getUserFullName() : actorUuid);
+      }
+
+      if (targetUuid != null) {
+        User target = userByUuidMap.get(targetUuid);
+        params.put("target", target != null ? target.getUserFullName() : targetUuid);
+      }
+
+      return translationService.translateSystemMessage(event, locale, params);
+    } catch (Exception e) {
+      return content;
+    }
   }
 
   private ReplyToResponse buildReplyResponse(Message replyMsg, Map<Long, User> userMap) {

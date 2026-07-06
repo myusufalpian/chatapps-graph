@@ -7,8 +7,11 @@ import id.xyz.chatapps_graph.framework.dto.ValidationData;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants;
 import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ErrorKeyConstants;
+import id.xyz.chatapps_graph.infrastructure.service.TranslationService;
+import id.xyz.chatapps_graph.infrastructure.utility.LocaleResolver;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -27,11 +30,24 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @Slf4j
 public class GlobalExceptionHandler {
 
+  private final TranslationService translationService;
+  private final LocaleResolver localeResolver;
+
+  public GlobalExceptionHandler(TranslationService translationService, LocaleResolver localeResolver) {
+    this.translationService = translationService;
+    this.localeResolver = localeResolver;
+  }
+
   @ExceptionHandler(GeneralException.class)
-  public ResponseEntity<ErrorResponse> handleGeneralException(GeneralException exc) {
+  public ResponseEntity<ErrorResponse> handleGeneralException(GeneralException exc, HttpServletRequest request) {
+    String locale = localeResolver.resolve(request);
+    String translatedMessage = exc.getKey() != null
+        ? translationService.translateError(exc.getKey(), locale)
+        : exc.getMessage();
+
     ErrorData error = new BaseErrorData(
         exc.getKey(),
-        exc.getMessage(),
+        translatedMessage,
         exc.getHttpCode(),
         exc.getValidation()
     );
@@ -39,11 +55,13 @@ public class GlobalExceptionHandler {
   }
 
   @ExceptionHandler(Exception.class)
-  public ResponseEntity<ErrorResponse> handleGeneralException(Exception exc) {
+  public ResponseEntity<ErrorResponse> handleGeneralException(Exception exc, HttpServletRequest request) {
     log.error("Unhandled exception: ", exc);
+    String locale = localeResolver.resolve(request);
+    String translatedMessage = translationService.translateError(ErrorConstants.INTERNAL_SERVER_ERROR, locale);
     ErrorData error = new BaseErrorData(
         ErrorConstants.INTERNAL_SERVER_ERROR,
-        ErrorKeyConstants.INTERNAL_SERVER_ERROR,
+        translatedMessage,
         HttpStatus.INTERNAL_SERVER_ERROR.value(),
         null
     );

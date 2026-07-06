@@ -60,6 +60,9 @@ public class Message {
   @Column(name = "created_at", updatable = false)
   private OffsetDateTime createdAt;
 
+  @Column(name = "edited_at")
+  private OffsetDateTime editedAt;
+
   @PrePersist
   void prePersist() {
     if (!StringUtils.hasLength(messageUuid)) messageUuid = UUID.randomUUID().toString();

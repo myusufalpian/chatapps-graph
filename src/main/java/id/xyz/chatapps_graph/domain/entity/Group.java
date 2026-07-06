@@ -35,6 +35,16 @@ public class Group extends BaseEntity {
   @Column(name = "group_desc", columnDefinition = "TEXT")
   private String groupDesc;
 
+  @Column(name = "avatar_path", length = 500)
+  private String avatarPath;
+
+  @Column(name = "allow_member_add", nullable = false)
+  @Builder.Default
+  private Boolean allowMemberAdd = true;
+
+  @Column(name = "conversation_id")
+  private Long conversationId;
+
   @Column(name = "is_active", columnDefinition = "integer default 0")
   private Integer isActive;
 }

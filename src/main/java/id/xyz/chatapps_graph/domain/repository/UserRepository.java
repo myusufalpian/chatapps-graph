@@ -32,4 +32,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
   @Modifying
   @Query(value = UserPresenceSQL.UPDATE_LAST_SEEN, nativeQuery = true)
   void updateLastSeenAt(Long userId);
+
+  List<User> findByUserUuidInAndUserStatus(List<String> userUuids, Integer userStatus);
 }

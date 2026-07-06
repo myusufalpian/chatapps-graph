@@ -36,6 +36,9 @@ public class Conversation {
   @Column(name = "conversation_type", length = 20, nullable = false)
   private String conversationType;
 
+  @Column(name = "group_id")
+  private Long groupId;
+
   @Column(name = "created_at", updatable = false)
   private OffsetDateTime createdAt;
 
