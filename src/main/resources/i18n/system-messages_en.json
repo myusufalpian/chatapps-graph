@@ -1,0 +1,11 @@
+{
+  "GROUP_CREATED": "{actor} created the group",
+  "GROUP_UPDATED": "{actor} changed the group name",
+  "GROUP_AVATAR_CHANGED": "{actor} changed the group photo",
+  "MEMBER_ADDED": "{actor} added {target}",
+  "MEMBER_REMOVED": "{actor} removed {target}",
+  "MEMBER_LEFT": "{actor} left the group",
+  "MEMBER_MADE_ADMIN": "{actor} made {target} an admin",
+  "ADMIN_REVOKED": "{actor} revoked admin status from {target}",
+  "GROUP_DISSOLVED": "Group has been dissolved"
+}

@@ -1,0 +1,18 @@
+{
+  "MESSAGE_NOT_FOUND": "Message not found",
+  "USER_NOT_FOUND": "User not found",
+  "CONVERSATION_NOT_FOUND": "Conversation not found",
+  "FORBIDDEN": "Access denied",
+  "NOT_ADMIN": "Only admins can perform this action",
+  "NOT_SENDER": "Only the sender can edit this message",
+  "GROUP_DISSOLVED": "Group has been dissolved",
+  "EDIT_WINDOW_EXPIRED": "Edit window has expired",
+  "MESSAGE_DELETED": "Message has been deleted",
+  "RATE_LIMITED": "Too many requests, please try again later",
+  "INVALID_REQUEST": "Invalid request",
+  "VALIDATION_ERROR": "Validation failed",
+  "INTERNAL_SERVER_ERROR": "An error occurred on the server",
+  "BAD_REQUEST": "Bad request",
+  "CONTACT_NOT_FOUND": "Contact not found",
+  "SYNC_LIMIT_EXCEEDED": "Sync limit exceeded"
+}

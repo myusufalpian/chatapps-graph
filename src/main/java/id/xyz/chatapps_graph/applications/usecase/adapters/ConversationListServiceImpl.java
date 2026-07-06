@@ -4,15 +4,18 @@ import id.xyz.chatapps_graph.applications.usecase.ConversationListService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
 import id.xyz.chatapps_graph.domain.entity.Conversation;
 import id.xyz.chatapps_graph.domain.entity.ConversationParticipant;
+import id.xyz.chatapps_graph.domain.entity.Group;
 import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.enums.ConversationType;
 import id.xyz.chatapps_graph.domain.repository.ConversationParticipantRepository;
+import id.xyz.chatapps_graph.domain.repository.GroupRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
 import id.xyz.chatapps_graph.domain.repository.projection.ConversationListProjection;
 import id.xyz.chatapps_graph.framework.dto.ConversationItemResponse;
 import id.xyz.chatapps_graph.framework.dto.ConversationListResponse;
 import id.xyz.chatapps_graph.framework.dto.ParticipantSummary;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
+import id.xyz.chatapps_graph.infrastructure.config.properties.MinioProperties;
 import id.xyz.chatapps_graph.infrastructure.mapper.ConversationMapper;
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil;
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil.CursorPosition;
@@ -35,6 +38,8 @@ public class ConversationListServiceImpl implements ConversationListService {
   private final ConversationParticipantRepository participantRepository;
   private final UserRepository userRepository;
   private final ConversationService conversationService;
+  private final GroupRepository groupRepository;
+  private final MinioProperties minioProperties;
 
   @Override
   @Transactional(readOnly = true)
@@ -75,12 +80,34 @@ public class ConversationListServiceImpl implements ConversationListService {
     Map<Long, User> userMap = userRepository.findAllById(allUserIds).stream()
         .collect(Collectors.toMap(User::getUserId, Function.identity()));
 
+    // Batch fetch groups for GROUP type conversations
+    List<Long> groupConversationIds = resultRows.stream()
+        .filter(r -> ConversationType.GROUP.name().equals(r.getConversationType()))
+        .map(ConversationListProjection::getConversationId).toList();
+    Map<Long, Group> groupByConvId = groupConversationIds.isEmpty()
+        ? Map.of()
+        : groupRepository.findByConversationIdIn(groupConversationIds).stream()
+            .collect(Collectors.toMap(Group::getConversationId, Function.identity()));
+
     List<ConversationItemResponse> items = resultRows.stream()
         .map(row -> {
           List<ParticipantSummary> participants = buildParticipantSummary(
               row.getConversationType(), userId,
               participantsByConv.getOrDefault(row.getConversationId(), List.of()), userMap);
-          return ConversationMapper.toResponse(row, participants);
+
+          String groupName = null;
+          String groupAvatarUrl = null;
+          if (ConversationType.GROUP.name().equals(row.getConversationType())) {
+            Group group = groupByConvId.get(row.getConversationId());
+            if (group != null) {
+              groupName = group.getGroupName();
+              if (group.getAvatarPath() != null) {
+                groupAvatarUrl = minioProperties.getEndpoint() + "/" + minioProperties.getBucket() + "/" + group.getAvatarPath();
+              }
+            }
+          }
+
+          return ConversationMapper.toResponse(row, participants, groupName, groupAvatarUrl);
         })
         .toList();
 

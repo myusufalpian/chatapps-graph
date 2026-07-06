@@ -15,7 +15,7 @@ public class MessageMapper {
 
   public static MessageResponse toResponse(Message message, String senderUuid, String conversationUuid,
       AttachmentResponse attachment, ReplyToResponse replyTo,
-      ForwardedInfo forwardedFrom, List<ReactionSummary> reactions) {
+      ForwardedInfo forwardedFrom, List<ReactionSummary> reactions, String displayText) {
     String content = message.getMessageStatus() == MessageStatus.DELETED.getValue() ? null : message.getContent();
     return MessageResponse.builder()
         .messageUuid(message.getMessageUuid())
@@ -29,6 +29,8 @@ public class MessageMapper {
         .reactions(reactions)
         .status(message.getMessageStatus())
         .createdAt(message.getCreatedAt())
+        .editedAt(message.getEditedAt())
+        .displayText(displayText)
         .build();
   }
 

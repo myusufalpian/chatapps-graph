@@ -14,6 +14,15 @@ public class ConversationMapper {
       ConversationListProjection projection,
       List<ParticipantSummary> participants) {
 
+    return toResponse(projection, participants, null, null);
+  }
+
+  public static ConversationItemResponse toResponse(
+      ConversationListProjection projection,
+      List<ParticipantSummary> participants,
+      String groupName,
+      String groupAvatarUrl) {
+
     return ConversationItemResponse.builder()
         .conversationUuid(projection.getConversationUuid())
         .conversationType(projection.getConversationType())
@@ -24,6 +33,8 @@ public class ConversationMapper {
         .isPinned(projection.getIsPinned())
         .isMuted(projection.getIsMuted())
         .participants(participants)
+        .groupName(groupName)
+        .groupAvatarUrl(groupAvatarUrl)
         .build();
   }
 

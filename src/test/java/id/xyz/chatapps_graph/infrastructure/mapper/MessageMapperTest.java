@@ -29,7 +29,7 @@ class MessageMapperTest {
         .createdAt(CREATED)
         .build();
 
-    MessageResponse result = MessageMapper.toResponse(message, "sender-uuid", "conv-uuid", null, null, null, null);
+    MessageResponse result = MessageMapper.toResponse(message, "sender-uuid", "conv-uuid", null, null, null, null, null);
 
     assertEquals("msg-uuid", result.messageUuid());
     assertEquals("conv-uuid", result.conversationUuid());
@@ -53,7 +53,7 @@ class MessageMapperTest {
         .createdAt(CREATED)
         .build();
 
-    MessageResponse result = MessageMapper.toResponse(message, "sender", "conv", null, null, null, null);
+    MessageResponse result = MessageMapper.toResponse(message, "sender", "conv", null, null, null, null, null);
 
     assertNull(result.content());
     assertEquals(1, result.status());
@@ -70,7 +70,7 @@ class MessageMapperTest {
         .build();
     AttachmentResponse att = new AttachmentResponse("att-uuid", "photo.jpg", "chat/u/1_photo.jpg", 1024L, "image/jpeg", "IMAGE", null);
 
-    MessageResponse result = MessageMapper.toResponse(message, "sender", "conv", att, null, null, null);
+    MessageResponse result = MessageMapper.toResponse(message, "sender", "conv", att, null, null, null, null);
 
     assertNotNull(result.attachment());
     assertEquals("att-uuid", result.attachment().attachmentUuid());
@@ -89,7 +89,7 @@ class MessageMapperTest {
         .build();
     ReplyToResponse reply = new ReplyToResponse("reply-uuid", "original-sender", "Original message");
 
-    MessageResponse result = MessageMapper.toResponse(message, "sender", "conv", null, reply, null, null);
+    MessageResponse result = MessageMapper.toResponse(message, "sender", "conv", null, reply, null, null, null);
 
     assertNotNull(result.replyTo());
     assertEquals("reply-uuid", result.replyTo().messageUuid());

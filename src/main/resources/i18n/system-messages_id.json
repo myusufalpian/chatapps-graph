@@ -1,0 +1,11 @@
+{
+  "GROUP_CREATED": "{actor} membuat grup",
+  "GROUP_UPDATED": "{actor} mengubah nama grup",
+  "GROUP_AVATAR_CHANGED": "{actor} mengubah foto grup",
+  "MEMBER_ADDED": "{actor} menambahkan {target}",
+  "MEMBER_REMOVED": "{actor} mengeluarkan {target}",
+  "MEMBER_LEFT": "{actor} keluar dari grup",
+  "MEMBER_MADE_ADMIN": "{actor} menjadikan {target} sebagai admin",
+  "ADMIN_REVOKED": "{actor} menghapus status admin {target}",
+  "GROUP_DISSOLVED": "Grup telah dibubarkan"
+}

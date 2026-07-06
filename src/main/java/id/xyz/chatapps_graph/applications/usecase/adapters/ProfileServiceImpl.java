@@ -205,4 +205,14 @@ public class ProfileServiceImpl implements ProfileService {
           fieldName + " must not exceed " + max + " characters");
     }
   }
+
+  @Override
+  @Transactional
+  public void updatePrivacySetting(Long userId, Boolean hideReadReceipt) {
+    User user = userRepository.findById(userId)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User not found"));
+    user.setHideReadReceipt(hideReadReceipt);
+    user.setUpdatedAt(OffsetDateTime.now());
+    userRepository.save(user);
+  }
 }

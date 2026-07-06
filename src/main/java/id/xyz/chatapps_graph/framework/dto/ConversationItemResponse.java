@@ -1,5 +1,6 @@
 package id.xyz.chatapps_graph.framework.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.OffsetDateTime;
 import java.util.List;
 import lombok.Builder;
@@ -14,5 +15,7 @@ public record ConversationItemResponse(
     Integer unreadCount,
     Boolean isPinned,
     Boolean isMuted,
-    List<ParticipantSummary> participants
+    List<ParticipantSummary> participants,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String groupName,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String groupAvatarUrl
 ) {}

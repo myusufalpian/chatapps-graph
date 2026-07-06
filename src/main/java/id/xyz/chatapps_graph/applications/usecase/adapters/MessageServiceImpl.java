@@ -8,6 +8,7 @@ import id.xyz.chatapps_graph.applications.usecase.RateLimitService;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
 import id.xyz.chatapps_graph.domain.entity.Conversation;
 import id.xyz.chatapps_graph.domain.entity.Message;
+import id.xyz.chatapps_graph.domain.entity.MessageEditHistory;
 import id.xyz.chatapps_graph.domain.entity.MessageReaction;
 import id.xyz.chatapps_graph.domain.entity.MessageReceipt;
 import id.xyz.chatapps_graph.domain.entity.User;
@@ -16,14 +17,18 @@ import id.xyz.chatapps_graph.domain.enums.MessageStatus;
 import id.xyz.chatapps_graph.domain.enums.ReceiptStatus;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
 import id.xyz.chatapps_graph.domain.repository.ConversationParticipantRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageEditHistoryRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageReactionRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageReceiptRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
+import id.xyz.chatapps_graph.infrastructure.config.properties.ChatEditProperties;
+import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants;
 import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.StatusConstants;
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil;
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil.CursorPosition;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +55,8 @@ public class MessageServiceImpl implements MessageService {
   private final RateLimitService rateLimitService;
   private final MessageReactionRepository reactionRepository;
   private final PushNotificationService pushNotificationService;
+  private final MessageEditHistoryRepository editHistoryRepository;
+  private final ChatEditProperties chatEditProperties;
 
   @Override
   @Transactional
@@ -57,7 +64,7 @@ public class MessageServiceImpl implements MessageService {
       String messageType, String content, Long attachmentId, String replyToMessageUuid) {
 
     if (rateLimitService.isChatRateLimited(senderId)) {
-      throw new GeneralException(429, "RATE_LIMITED", "Too many messages, try again later");
+      throw new GeneralException(429, ErrorConstants.RATE_LIMITED, "Too many messages, try again later");
     }
 
     Conversation conversation = resolveConversation(senderId, recipientUuid, conversationUuid);
@@ -111,11 +118,11 @@ public class MessageServiceImpl implements MessageService {
   @Transactional
   public void deleteMessage(String messageUuid, Long userId, String mode) {
     Message message = messageRepository.findByMessageUuid(messageUuid)
-        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "MESSAGE_NOT_FOUND", "Message not found"));
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.MESSAGE_NOT_FOUND, "Message not found"));
 
     if (DeleteMode.FOR_ALL.name().equals(mode)) {
       if (!message.getSenderId().equals(userId)) {
-        throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Only sender can delete for all");
+        throw new GeneralException(HttpStatus.FORBIDDEN.value(), ErrorConstants.FORBIDDEN, "Only sender can delete for all");
       }
       message.setMessageStatus(MessageStatus.DELETED.getValue());
       messageRepository.saveAndFlush(message);
@@ -146,10 +153,21 @@ public class MessageServiceImpl implements MessageService {
 
   @Override
   @Transactional
-  public void markAsRead(String conversationUuid, Long userId) {
+  public boolean markAsRead(String conversationUuid, Long userId) {
     Conversation conversation = conversationService.findConversationByUuid(conversationUuid);
-    receiptRepository.markAsReadByConversation(conversation.getConversationId(), userId, ReceiptStatus.READ.getValue());
+
+    User reader = userRepository.findById(userId).orElse(null);
+    boolean shouldBroadcast = reader != null && !Boolean.TRUE.equals(reader.getHideReadReceipt());
+
+    // Only update receipt status to READ if user has NOT hidden read receipts
+    if (shouldBroadcast) {
+      receiptRepository.markAsReadByConversation(conversation.getConversationId(), userId, ReceiptStatus.READ.getValue());
+    }
+
+    // Always reset unread count (UX: badge disappears regardless of privacy setting)
     participantRepository.resetUnreadCount(conversation.getConversationId(), userId);
+
+    return shouldBroadcast;
   }
 
   private Conversation resolveConversation(Long senderId, String recipientUuid, String conversationUuid) {
@@ -157,13 +175,13 @@ public class MessageServiceImpl implements MessageService {
       return conversationService.findConversationByUuid(conversationUuid);
     }
     User recipient = userRepository.findUserByUserUuidAndUserStatus(recipientUuid, StatusConstants.ACTIVE)
-        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "Recipient not found"));
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.USER_NOT_FOUND, "Recipient not found"));
     return conversationService.findOrCreatePrivateConversation(senderId, recipient.getUserId());
   }
 
   private void validateParticipant(Long conversationId, Long userId) {
     if (!conversationService.isParticipant(conversationId, userId)) {
-      throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Not a participant");
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), ErrorConstants.FORBIDDEN, "Not a participant");
     }
   }
 
@@ -172,7 +190,7 @@ public class MessageServiceImpl implements MessageService {
       return null;
     }
     return messageRepository.findByMessageUuid(replyToMessageUuid)
-        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "MESSAGE_NOT_FOUND", "Reply message not found"))
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.MESSAGE_NOT_FOUND, "Reply message not found"))
         .getMessageId();
   }
 
@@ -200,11 +218,11 @@ public class MessageServiceImpl implements MessageService {
   @Transactional
   public Message forwardMessage(Long userId, String messageUuid, String targetConversationUuid) {
     if (rateLimitService.isChatRateLimited(userId)) {
-      throw new GeneralException(429, "RATE_LIMITED", "Too many messages, try again later");
+      throw new GeneralException(429, ErrorConstants.RATE_LIMITED, "Too many messages, try again later");
     }
 
     Message original = messageRepository.findByMessageUuid(messageUuid)
-        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "MESSAGE_NOT_FOUND", "Message not found"));
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.MESSAGE_NOT_FOUND, "Message not found"));
 
     // Validate user is participant in source conversation
     validateParticipant(original.getConversationId(), userId);
@@ -240,7 +258,7 @@ public class MessageServiceImpl implements MessageService {
   @Transactional
   public void addReaction(Long userId, Long messageId, String emoji) {
     if (rateLimitService.isReactionRateLimited(userId)) {
-      throw new GeneralException(429, "RATE_LIMITED", "Too many reactions, try again later");
+      throw new GeneralException(429, ErrorConstants.RATE_LIMITED, "Too many reactions, try again later");
     }
     MessageReaction reaction = reactionRepository.findByMessageIdAndUserId(messageId, userId)
         .orElse(MessageReaction.builder().messageId(messageId).userId(userId).build());
@@ -259,7 +277,7 @@ public class MessageServiceImpl implements MessageService {
   @Transactional(readOnly = true)
   public List<Message> searchMessages(Long userId, String query, String conversationUuid, String cursor, int limit) {
     if (!StringUtils.hasLength(query)) {
-      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_QUERY", "Search query is required");
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), ErrorConstants.INVALID_QUERY, "Search query is required");
     }
     int fetchLimit = Math.min(limit, 50) + 1;
     CursorPosition cursorPosition = CursorUtil.parse(cursor);
@@ -296,5 +314,36 @@ public class MessageServiceImpl implements MessageService {
       return messageType;
     }
     return content.length() <= 100 ? content : content.substring(0, 100);
+  }
+
+  @Override
+  @Transactional
+  public Message editMessage(Long userId, String messageUuid, String newContent) {
+    Message message = messageRepository.findByMessageUuid(messageUuid)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.MESSAGE_NOT_FOUND, "Message not found"));
+
+    if (!message.getSenderId().equals(userId)) {
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), ErrorConstants.NOT_SENDER, "Only sender can edit message");
+    }
+
+    if (message.getMessageStatus().equals(MessageStatus.DELETED.getValue())) {
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), ErrorConstants.MESSAGE_DELETED, "Cannot edit deleted message");
+    }
+
+    OffsetDateTime now = OffsetDateTime.now();
+    OffsetDateTime editDeadline = message.getCreatedAt().plusMinutes(chatEditProperties.getMaxWindowMinutes());
+    if (now.isAfter(editDeadline)) {
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), ErrorConstants.EDIT_WINDOW_EXPIRED, "Edit window has expired");
+    }
+
+    editHistoryRepository.save(MessageEditHistory.builder()
+        .messageId(message.getMessageId())
+        .originalContent(message.getContent())
+        .editedAt(now)
+        .build());
+
+    message.setContent(newContent);
+    message.setEditedAt(now);
+    return messageRepository.save(message);
   }
 }

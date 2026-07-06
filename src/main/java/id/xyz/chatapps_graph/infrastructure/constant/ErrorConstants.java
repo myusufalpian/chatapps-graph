@@ -3,12 +3,25 @@ package id.xyz.chatapps_graph.infrastructure.constant;
 import lombok.experimental.UtilityClass;
 
 public class ErrorConstants {
+
+  private ErrorConstants() {}
+
   public static final String INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR";
   public static final String BAD_REQUEST = "BAD_REQUEST";
   public static final String UNAUTHORIZED = "UNAUTHORIZED";
   public static final String FORBIDDEN = "FORBIDDEN";
   public static final String NOT_FOUND = "NOT_FOUND";
   public static final String VALIDATION_ERROR = "REQUEST_VALIDATION_ERROR";
+  public static final String MESSAGE_NOT_FOUND = "MESSAGE_NOT_FOUND";
+  public static final String USER_NOT_FOUND = "USER_NOT_FOUND";
+  public static final String CONVERSATION_NOT_FOUND = "CONVERSATION_NOT_FOUND";
+  public static final String RATE_LIMITED = "RATE_LIMITED";
+  public static final String NOT_SENDER = "NOT_SENDER";
+  public static final String EDIT_WINDOW_EXPIRED = "EDIT_WINDOW_EXPIRED";
+  public static final String MESSAGE_DELETED = "MESSAGE_DELETED";
+  public static final String INVALID_QUERY = "INVALID_QUERY";
+  public static final String INVALID_METADATA = "INVALID_METADATA";
+  public static final String INVALID_REQUEST = "INVALID_REQUEST";
 
   @UtilityClass
   public static class ErrorKeyConstants {

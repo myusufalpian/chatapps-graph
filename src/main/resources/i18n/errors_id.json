@@ -1,0 +1,18 @@
+{
+  "MESSAGE_NOT_FOUND": "Pesan tidak ditemukan",
+  "USER_NOT_FOUND": "Pengguna tidak ditemukan",
+  "CONVERSATION_NOT_FOUND": "Percakapan tidak ditemukan",
+  "FORBIDDEN": "Akses ditolak",
+  "NOT_ADMIN": "Hanya admin yang dapat melakukan aksi ini",
+  "NOT_SENDER": "Hanya pengirim yang dapat mengedit pesan",
+  "GROUP_DISSOLVED": "Grup telah dibubarkan",
+  "EDIT_WINDOW_EXPIRED": "Waktu edit sudah habis",
+  "MESSAGE_DELETED": "Pesan sudah dihapus",
+  "RATE_LIMITED": "Terlalu banyak permintaan, coba lagi nanti",
+  "INVALID_REQUEST": "Permintaan tidak valid",
+  "VALIDATION_ERROR": "Validasi gagal",
+  "INTERNAL_SERVER_ERROR": "Terjadi kesalahan pada server",
+  "BAD_REQUEST": "Permintaan tidak valid",
+  "CONTACT_NOT_FOUND": "Kontak tidak ditemukan",
+  "SYNC_LIMIT_EXCEEDED": "Batas sinkronisasi terlampaui"
+}
