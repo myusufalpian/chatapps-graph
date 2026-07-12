@@ -18,6 +18,7 @@ public record MessageResponse(
     ForwardedInfo forwardedFrom,
     List<ReactionSummary> reactions,
     Integer status,
+    Integer deliveryStatus,
     OffsetDateTime createdAt,
     OffsetDateTime editedAt,
     String displayText

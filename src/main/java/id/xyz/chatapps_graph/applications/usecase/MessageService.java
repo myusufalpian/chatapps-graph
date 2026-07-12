@@ -12,7 +12,9 @@ public interface MessageService {
 
   void deleteMessage(String messageUuid, Long userId, String mode);
 
-  boolean markAsRead(String conversationUuid, Long userId);
+  ReadReceiptResult markAsRead(String conversationUuid, Long userId);
+
+  DeliveryReceiptResult markAsDelivered(String conversationUuid, Long userId, List<String> messageUuids);
 
   Message forwardMessage(Long userId, String messageUuid, String targetConversationUuid);
 
@@ -22,5 +24,5 @@ public interface MessageService {
 
   List<Message> searchMessages(Long userId, String query, String conversationUuid, String cursor, int limit);
 
-  Message editMessage(Long userId, String messageUuid, String newContent);
+  MessageEditResult editMessage(Long userId, String messageUuid, String newContent);
 }

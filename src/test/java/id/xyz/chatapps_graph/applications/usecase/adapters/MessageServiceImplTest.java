@@ -1,6 +1,7 @@
 package id.xyz.chatapps_graph.applications.usecase.adapters;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -248,5 +249,34 @@ class MessageServiceImplTest {
     messageService.markAsRead(CONVERSATION_UUID, SENDER_ID);
 
     verify(receiptRepository).markAsReadByConversation(CONVERSATION_ID, SENDER_ID, ReceiptStatus.READ.getValue());
+  }
+
+  @Test
+  @DisplayName("markAsDelivered: updates receipt rows and returns sender ids")
+  void markAsDelivered_UpdatesReceipts() {
+    Conversation conversation = buildConversation();
+    when(conversationService.findConversationByUuid(CONVERSATION_UUID)).thenReturn(conversation);
+    when(conversationService.isParticipant(CONVERSATION_ID, RECIPIENT_ID)).thenReturn(true);
+    when(receiptRepository.findUndeliveredMessageSenderIds(CONVERSATION_ID, RECIPIENT_ID,
+        List.of("msg-1", "msg-2"), ReceiptStatus.SENT.getValue())).thenReturn(List.of(7L));
+    when(receiptRepository.markAsDeliveredByConversation(CONVERSATION_ID, RECIPIENT_ID,
+        List.of("msg-1", "msg-2"), ReceiptStatus.SENT.getValue(), ReceiptStatus.DELIVERED.getValue()))
+        .thenReturn(2);
+
+    var result = messageService.markAsDelivered(CONVERSATION_UUID, RECIPIENT_ID, List.of("msg-1", "msg-2"));
+
+    assertTrue(result.receiptsUpdated());
+    assertEquals(List.of(7L), result.senderIds());
+    verify(receiptRepository).markAsDeliveredByConversation(CONVERSATION_ID, RECIPIENT_ID,
+        List.of("msg-1", "msg-2"), ReceiptStatus.SENT.getValue(), ReceiptStatus.DELIVERED.getValue());
+  }
+
+  @Test
+  @DisplayName("markAsDelivered: empty payload returns hidden no-op")
+  void markAsDelivered_EmptyPayload_ReturnsHidden() {
+    var result = messageService.markAsDelivered(CONVERSATION_UUID, RECIPIENT_ID, List.of());
+
+    assertFalse(result.receiptsUpdated());
+    assertEquals(List.of(), result.senderIds());
   }
 }

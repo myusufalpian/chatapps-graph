@@ -3,7 +3,10 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
 import id.xyz.chatapps_graph.applications.usecase.MessageService;
+import id.xyz.chatapps_graph.applications.usecase.MessageEditResult;
+import id.xyz.chatapps_graph.applications.usecase.DeliveryReceiptResult;
 import id.xyz.chatapps_graph.applications.usecase.PushNotificationService;
+import id.xyz.chatapps_graph.applications.usecase.ReadReceiptResult;
 import id.xyz.chatapps_graph.applications.usecase.RateLimitService;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
 import id.xyz.chatapps_graph.domain.entity.Conversation;
@@ -30,6 +33,7 @@ import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil;
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil.CursorPosition;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -153,21 +157,56 @@ public class MessageServiceImpl implements MessageService {
 
   @Override
   @Transactional
-  public boolean markAsRead(String conversationUuid, Long userId) {
+  public ReadReceiptResult markAsRead(String conversationUuid, Long userId) {
     Conversation conversation = conversationService.findConversationByUuid(conversationUuid);
 
     User reader = userRepository.findById(userId).orElse(null);
-    boolean shouldBroadcast = reader != null && !Boolean.TRUE.equals(reader.getHideReadReceipt());
+    boolean shouldUpdateReceipts = reader != null && !Boolean.TRUE.equals(reader.getHideReadReceipt());
+    List<Long> senderIds = List.of();
 
-    // Only update receipt status to READ if user has NOT hidden read receipts
-    if (shouldBroadcast) {
-      receiptRepository.markAsReadByConversation(conversation.getConversationId(), userId, ReceiptStatus.READ.getValue());
+    if (shouldUpdateReceipts) {
+      senderIds = receiptRepository.findUnreadMessageSenderIds(
+          conversation.getConversationId(), userId, ReceiptStatus.READ.getValue());
+      int updatedCount = receiptRepository.markAsReadByConversation(
+          conversation.getConversationId(), userId, ReceiptStatus.READ.getValue());
+      if (updatedCount == 0) {
+        senderIds = List.of();
+      }
     }
 
     // Always reset unread count (UX: badge disappears regardless of privacy setting)
     participantRepository.resetUnreadCount(conversation.getConversationId(), userId);
 
-    return shouldBroadcast;
+    return shouldUpdateReceipts && !senderIds.isEmpty()
+        ? new ReadReceiptResult(true, senderIds)
+        : ReadReceiptResult.hidden();
+  }
+
+  @Override
+  @Transactional
+  public DeliveryReceiptResult markAsDelivered(String conversationUuid, Long userId, List<String> messageUuids) {
+    if (!StringUtils.hasLength(conversationUuid) || messageUuids == null || messageUuids.isEmpty()) {
+      return DeliveryReceiptResult.hidden();
+    }
+
+    Conversation conversation = conversationService.findConversationByUuid(conversationUuid);
+    if (!conversationService.isParticipant(conversation.getConversationId(), userId)) {
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), ErrorConstants.FORBIDDEN, "Not a participant");
+    }
+
+    List<Long> senderIds = receiptRepository.findUndeliveredMessageSenderIds(
+        conversation.getConversationId(), userId, messageUuids, ReceiptStatus.SENT.getValue());
+    int updatedCount = receiptRepository.markAsDeliveredByConversation(
+        conversation.getConversationId(), userId, messageUuids, ReceiptStatus.SENT.getValue(),
+        ReceiptStatus.DELIVERED.getValue());
+
+    if (updatedCount == 0) {
+      senderIds = List.of();
+    }
+
+    return !senderIds.isEmpty()
+        ? new DeliveryReceiptResult(true, senderIds)
+        : DeliveryReceiptResult.hidden();
   }
 
   private Conversation resolveConversation(Long senderId, String recipientUuid, String conversationUuid) {
@@ -318,7 +357,7 @@ public class MessageServiceImpl implements MessageService {
 
   @Override
   @Transactional
-  public Message editMessage(Long userId, String messageUuid, String newContent) {
+  public MessageEditResult editMessage(Long userId, String messageUuid, String newContent) {
     Message message = messageRepository.findByMessageUuid(messageUuid)
         .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.MESSAGE_NOT_FOUND, "Message not found"));
 
@@ -336,6 +375,10 @@ public class MessageServiceImpl implements MessageService {
       throw new GeneralException(HttpStatus.BAD_REQUEST.value(), ErrorConstants.EDIT_WINDOW_EXPIRED, "Edit window has expired");
     }
 
+    if (Objects.equals(message.getContent(), newContent)) {
+      return new MessageEditResult(message, false);
+    }
+
     editHistoryRepository.save(MessageEditHistory.builder()
         .messageId(message.getMessageId())
         .originalContent(message.getContent())
@@ -344,6 +387,6 @@ public class MessageServiceImpl implements MessageService {
 
     message.setContent(newContent);
     message.setEditedAt(now);
-    return messageRepository.save(message);
+    return new MessageEditResult(messageRepository.save(message), true);
   }
 }

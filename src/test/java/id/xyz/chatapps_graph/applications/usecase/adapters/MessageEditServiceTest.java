@@ -89,7 +89,7 @@ class MessageEditServiceTest {
           .thenAnswer(inv -> inv.getArgument(0));
       when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      Message result = messageService.editMessage(USER_ID, MESSAGE_UUID, "Edited content");
+      Message result = messageService.editMessage(USER_ID, MESSAGE_UUID, "Edited content").message();
 
       assertEquals("Edited content", result.getContent());
       assertNotNull(result.getEditedAt());
@@ -125,7 +125,7 @@ class MessageEditServiceTest {
           .thenAnswer(inv -> inv.getArgument(0));
       when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      Message result = messageService.editMessage(USER_ID, MESSAGE_UUID, "Edited");
+      Message result = messageService.editMessage(USER_ID, MESSAGE_UUID, "Edited").message();
 
       assertNotNull(result.getEditedAt());
       // editedAt should be same timestamp as history's editedAt
@@ -156,6 +156,20 @@ class MessageEditServiceTest {
       verify(editHistoryRepository, org.mockito.Mockito.times(2)).save(captor.capture());
       assertEquals("Original content", captor.getAllValues().get(0).getOriginalContent());
       assertEquals("Edit 1", captor.getAllValues().get(1).getOriginalContent());
+    }
+
+    @Test
+    @DisplayName("unchanged content: returns no-op without history or persistence write")
+    void editMessage_UnchangedContent_ReturnsNoOp() {
+      Message message = buildActiveMessage(USER_ID, OffsetDateTime.now().minusMinutes(2));
+      when(messageRepository.findByMessageUuid(MESSAGE_UUID)).thenReturn(Optional.of(message));
+      when(chatEditProperties.getMaxWindowMinutes()).thenReturn(30);
+
+      var result = messageService.editMessage(USER_ID, MESSAGE_UUID, "Original content");
+
+      assertFalse(result.changed());
+      verify(editHistoryRepository, never()).save(any());
+      verify(messageRepository, never()).save(any(Message.class));
     }
   }
 
@@ -231,7 +245,7 @@ class MessageEditServiceTest {
           .thenAnswer(inv -> inv.getArgument(0));
       when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      Message result = messageService.editMessage(USER_ID, MESSAGE_UUID, "Just in time");
+      Message result = messageService.editMessage(USER_ID, MESSAGE_UUID, "Just in time").message();
 
       assertEquals("Just in time", result.getContent());
     }
@@ -259,10 +273,13 @@ class MessageEditServiceTest {
     void markAsRead_HideFalse_NormalBehavior() {
       User reader = User.builder().userId(USER_ID).hideReadReceipt(false).build();
       when(userRepository.findById(USER_ID)).thenReturn(Optional.of(reader));
+      when(receiptRepository.findUnreadMessageSenderIds(10L, USER_ID, 2)).thenReturn(java.util.List.of(7L));
+      when(receiptRepository.markAsReadByConversation(10L, USER_ID, 2)).thenReturn(1);
 
-      boolean result = messageService.markAsRead("conv-uuid", USER_ID);
+      var result = messageService.markAsRead("conv-uuid", USER_ID);
 
-      assertTrue(result);
+      assertTrue(result.receiptsUpdated());
+      assertEquals(java.util.List.of(7L), result.senderIds());
       verify(receiptRepository).markAsReadByConversation(eq(10L), eq(USER_ID), eq(2));
       verify(participantRepository).resetUnreadCount(10L, USER_ID);
     }
@@ -273,7 +290,7 @@ class MessageEditServiceTest {
       User reader = User.builder().userId(USER_ID).hideReadReceipt(true).build();
       when(userRepository.findById(USER_ID)).thenReturn(Optional.of(reader));
 
-      boolean result = messageService.markAsRead("conv-uuid", USER_ID);
+      boolean result = messageService.markAsRead("conv-uuid", USER_ID).receiptsUpdated();
 
       assertFalse(result);
       verify(receiptRepository, never()).markAsReadByConversation(
@@ -297,7 +314,7 @@ class MessageEditServiceTest {
     void markAsRead_UserNull_DefaultsBroadcast() {
       when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
-      boolean result = messageService.markAsRead("conv-uuid", USER_ID);
+      boolean result = messageService.markAsRead("conv-uuid", USER_ID).receiptsUpdated();
 
       assertFalse(result);
       verify(receiptRepository, never()).markAsReadByConversation(
