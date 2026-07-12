@@ -17,7 +17,30 @@ public interface MessageReceiptRepository extends JpaRepository<MessageReceipt, 
 
   List<MessageReceipt> findAllByMessageId(Long messageId);
 
+  List<MessageReceipt> findAllByMessageIdIn(List<Long> messageIds);
+
+  @Query(value = "SELECT DISTINCT m.sender_id FROM message m "
+      + "JOIN message_receipt mr ON mr.message_id = m.message_id "
+      + "WHERE m.conversation_id = :conversationId AND mr.user_id = :userId "
+      + "AND mr.status < :readStatus", nativeQuery = true)
+  List<Long> findUnreadMessageSenderIds(Long conversationId, Long userId, int readStatus);
+
+  @Query(value = "SELECT DISTINCT m.sender_id FROM message m "
+      + "JOIN message_receipt mr ON mr.message_id = m.message_id "
+      + "WHERE m.conversation_id = :conversationId AND mr.user_id = :userId "
+      + "AND mr.status = :sentStatus AND m.message_uuid IN (:messageUuids)", nativeQuery = true)
+  List<Long> findUndeliveredMessageSenderIds(Long conversationId, Long userId, List<String> messageUuids,
+      int sentStatus);
+
   @Modifying
   @Query(value = MessageReceiptSQL.MARK_AS_READ_BY_CONVERSATION, nativeQuery = true)
   int markAsReadByConversation(Long conversationId, Long userId, int status);
+
+  @Modifying
+  @Query(value = "UPDATE message_receipt mr SET status = :deliveredStatus "
+      + "FROM message m WHERE mr.message_id = m.message_id "
+      + "AND m.conversation_id = :conversationId AND mr.user_id = :userId "
+      + "AND mr.status = :sentStatus AND m.message_uuid IN (:messageUuids)", nativeQuery = true)
+  int markAsDeliveredByConversation(Long conversationId, Long userId, List<String> messageUuids,
+      int sentStatus, int deliveredStatus);
 }

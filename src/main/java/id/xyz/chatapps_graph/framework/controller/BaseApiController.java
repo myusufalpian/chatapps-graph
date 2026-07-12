@@ -28,7 +28,7 @@ public abstract class BaseApiController {
    */
   protected String extractClientIp(HttpServletRequest request) {
     String xForwardedFor = request.getHeader("X-Forwarded-For");
-    if (StringUtils.hasLength(xForwardedFor)) {
+    if (StringUtils.hasText(xForwardedFor)) {
       return xForwardedFor.split(",")[0].trim();
     }
     return request.getRemoteAddr();

@@ -6,7 +6,6 @@ import id.xyz.chatapps_graph.framework.dto.ErrorResponse;
 import id.xyz.chatapps_graph.framework.dto.ValidationData;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants;
-import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants.ErrorKeyConstants;
 import id.xyz.chatapps_graph.infrastructure.service.TranslationService;
 import id.xyz.chatapps_graph.infrastructure.utility.LocaleResolver;
 import jakarta.validation.ConstraintViolation;
@@ -70,11 +69,10 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)
   public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatchException(
-      MethodArgumentTypeMismatchException exc) {
-    String requiredType = exc.getRequiredType() != null ? exc.getRequiredType().getSimpleName() : "unknown";
+      MethodArgumentTypeMismatchException exc, HttpServletRequest request) {
     ErrorData error = new BaseErrorData(
         ErrorConstants.BAD_REQUEST,
-        String.format(ErrorKeyConstants.METHOD_ARGUMENT_TYPE_MISMATCH, exc.getName(), requiredType, exc.getValue()),
+        translationService.translateError(ErrorConstants.BAD_REQUEST, localeResolver.resolve(request)),
         HttpStatus.BAD_REQUEST.value(),
         null
     );
@@ -82,16 +80,18 @@ public class GlobalExceptionHandler {
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
-  public ResponseEntity<ErrorResponse> handleMethodArgumentNotValidException(MethodArgumentNotValidException exc) {
+  public ResponseEntity<ErrorResponse> handleMethodArgumentNotValidException(
+      MethodArgumentNotValidException exc, HttpServletRequest request) {
     List<ValidationData> validationDataList = new ArrayList<>();
     for (FieldError fieldError : exc.getBindingResult().getFieldErrors()) {
       validationDataList.add(new ValidationData(fieldError.getField(), fieldError.getDefaultMessage()));
     }
-    return buildValidationErrorResponse(validationDataList);
+    return buildValidationErrorResponse(validationDataList, request);
   }
 
   @ExceptionHandler(ConstraintViolationException.class)
-  public ResponseEntity<ErrorResponse> handleConstraintViolationException(ConstraintViolationException exc) {
+  public ResponseEntity<ErrorResponse> handleConstraintViolationException(
+      ConstraintViolationException exc, HttpServletRequest request) {
     List<ValidationData> validationDataList = new ArrayList<>();
     for (ConstraintViolation<?> violation : exc.getConstraintViolations()) {
       validationDataList.add(new ValidationData(
@@ -99,13 +99,14 @@ public class GlobalExceptionHandler {
           violation.getMessage()
       ));
     }
-    return buildValidationErrorResponse(validationDataList);
+    return buildValidationErrorResponse(validationDataList, request);
   }
 
-  private ResponseEntity<ErrorResponse> buildValidationErrorResponse(List<ValidationData> validationDataList) {
+  private ResponseEntity<ErrorResponse> buildValidationErrorResponse(
+      List<ValidationData> validationDataList, HttpServletRequest request) {
     ErrorData error = new BaseErrorData(
         ErrorConstants.BAD_REQUEST,
-        ErrorKeyConstants.FIELD_VALIDATION_ERROR,
+        translationService.translateError(ErrorConstants.BAD_REQUEST, localeResolver.resolve(request)),
         HttpStatus.BAD_REQUEST.value(),
         validationDataList
     );
