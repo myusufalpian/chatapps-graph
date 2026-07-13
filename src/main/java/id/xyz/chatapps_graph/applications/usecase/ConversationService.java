@@ -12,4 +12,7 @@ public interface ConversationService {
   boolean isParticipant(Long conversationId, Long userId);
 
   Conversation createMultiChat(Long creatorId, List<Long> participantUserIds);
+
+  Conversation updateDisappearingTtl(String uuid, Long userId, Integer ttlHours);
 }
+

@@ -57,11 +57,19 @@ public class Message {
   @Column(name = "message_status", nullable = false)
   private Integer messageStatus;
 
+  @Column(name = "preview_id")
+  private Long previewId;
+
   @Column(name = "created_at", updatable = false)
   private OffsetDateTime createdAt;
 
   @Column(name = "edited_at")
   private OffsetDateTime editedAt;
+
+  @Column(name = "deleted_at")
+  private OffsetDateTime deletedAt;
+
+
 
   @PrePersist
   void prePersist() {

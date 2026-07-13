@@ -2,12 +2,13 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 
 import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
-import id.xyz.chatapps_graph.applications.usecase.MessageService;
-import id.xyz.chatapps_graph.applications.usecase.MessageEditResult;
 import id.xyz.chatapps_graph.applications.usecase.DeliveryReceiptResult;
+import id.xyz.chatapps_graph.applications.usecase.LinkPreviewService;
+import id.xyz.chatapps_graph.applications.usecase.MessageEditResult;
+import id.xyz.chatapps_graph.applications.usecase.MessageService;
 import id.xyz.chatapps_graph.applications.usecase.PushNotificationService;
-import id.xyz.chatapps_graph.applications.usecase.ReadReceiptResult;
 import id.xyz.chatapps_graph.applications.usecase.RateLimitService;
+import id.xyz.chatapps_graph.applications.usecase.ReadReceiptResult;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
 import id.xyz.chatapps_graph.domain.entity.Conversation;
 import id.xyz.chatapps_graph.domain.entity.Message;
@@ -25,6 +26,7 @@ import id.xyz.chatapps_graph.domain.repository.MessageReactionRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageReceiptRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
+import id.xyz.chatapps_graph.framework.dto.LinkPreviewResponse;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.config.properties.ChatEditProperties;
 import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants;
@@ -33,15 +35,20 @@ import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil;
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil.CursorPosition;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 @Slf4j
@@ -61,6 +68,10 @@ public class MessageServiceImpl implements MessageService {
   private final PushNotificationService pushNotificationService;
   private final MessageEditHistoryRepository editHistoryRepository;
   private final ChatEditProperties chatEditProperties;
+  private final LinkPreviewService linkPreviewService;
+  private final SimpMessagingTemplate messagingTemplate;
+  private final PlatformTransactionManager transactionManager;
+
 
   @Override
   @Transactional
@@ -99,6 +110,25 @@ public class MessageServiceImpl implements MessageService {
 
       registerPushAfterCommit(message, senderId, conversation.getConversationId());
 
+      List<String> urls = extractUrls(content);
+      if (!urls.isEmpty()) {
+        String firstUrl = urls.getFirst();
+        String messageUuid = message.getMessageUuid();
+        String convUuid = conversation.getConversationUuid();
+        Long msgId = message.getMessageId();
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+          TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              triggerAsyncLinkPreview(firstUrl, msgId, messageUuid, convUuid);
+            }
+          });
+        } else {
+          triggerAsyncLinkPreview(firstUrl, msgId, messageUuid, convUuid);
+        }
+      }
+
       return message;
     } catch (Exception e) {
       if (filePath != null) {
@@ -107,6 +137,7 @@ public class MessageServiceImpl implements MessageService {
       throw e;
     }
   }
+
 
   @Override
   @Transactional(readOnly = true)
@@ -389,4 +420,54 @@ public class MessageServiceImpl implements MessageService {
     message.setEditedAt(now);
     return new MessageEditResult(messageRepository.save(message), true);
   }
+
+  private static final java.util.regex.Pattern URL_PATTERN = java.util.regex.Pattern.compile(
+      "https?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%=~_|]"
+  );
+
+  private java.util.List<String> extractUrls(String text) {
+    if (text == null || text.trim().isEmpty()) {
+      return java.util.List.of();
+    }
+    java.util.List<String> urls = new java.util.ArrayList<>();
+    java.util.regex.Matcher matcher = URL_PATTERN.matcher(text);
+    while (matcher.find()) {
+      urls.add(matcher.group());
+    }
+    return urls;
+  }
+
+  private void triggerAsyncLinkPreview(String url, Long messageId, String messageUuid, String conversationUuid) {
+    linkPreviewService.fetchPreviewAsync(url).thenAccept(preview -> {
+      if (preview != null) {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        txTemplate.executeWithoutResult(status -> {
+          Message msg = messageRepository.findById(messageId).orElse(null);
+          if (msg != null) {
+            msg.setPreviewId(preview.getPreviewId());
+            messageRepository.save(msg);
+          }
+        });
+
+        LinkPreviewResponse previewResponse = LinkPreviewResponse.builder()
+            .url(preview.getUrl())
+            .title(preview.getTitle())
+            .description(preview.getDescription())
+            .imageUrl(preview.getImageUrl())
+            .siteName(preview.getSiteName())
+            .build();
+
+        messagingTemplate.convertAndSend(
+            "/topic/chat/" + conversationUuid,
+            Map.of(
+                "type", "LINK_PREVIEW_READY",
+                "messageUuid", messageUuid,
+                "preview", previewResponse
+            )
+        );
+      }
+    });
+  }
 }
+

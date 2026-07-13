@@ -7,5 +7,7 @@
   "MEMBER_LEFT": "{actor} keluar dari grup",
   "MEMBER_MADE_ADMIN": "{actor} menjadikan {target} sebagai admin",
   "ADMIN_REVOKED": "{actor} menghapus status admin {target}",
-  "GROUP_DISSOLVED": "Grup telah dibubarkan"
+  "GROUP_DISSOLVED": "Grup telah dibubarkan",
+  "DISAPPEARING_ENABLED": "{actor} menyalakan pesan sementara ({ttl})",
+  "DISAPPEARING_DISABLED": "{actor} mematikan pesan sementara"
 }

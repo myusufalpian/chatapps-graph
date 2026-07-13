@@ -22,7 +22,11 @@ public class SystemMessageService {
   private final ObjectMapper objectMapper;
 
   public Message create(Long conversationId, Long actorId, String event, String actorUuid, String targetUuid) {
-    String content = buildContent(event, actorUuid, targetUuid);
+    return create(conversationId, actorId, event, actorUuid, targetUuid, null);
+  }
+
+  public Message create(Long conversationId, Long actorId, String event, String actorUuid, String targetUuid, String ttl) {
+    String content = buildContent(event, actorUuid, targetUuid, ttl);
 
     Message message = messageRepository.save(Message.builder()
         .conversationId(conversationId)
@@ -40,13 +44,16 @@ public class SystemMessageService {
     return message;
   }
 
-  private String buildContent(String event, String actorUuid, String targetUuid) {
+  private String buildContent(String event, String actorUuid, String targetUuid, String ttl) {
     try {
       Map<String, String> payload = new LinkedHashMap<>();
       payload.put("event", event);
       payload.put("actorUuid", actorUuid);
       if (targetUuid != null) {
         payload.put("targetUuid", targetUuid);
+      }
+      if (ttl != null) {
+        payload.put("ttl", ttl);
       }
       return objectMapper.writeValueAsString(payload);
     } catch (Exception e) {
