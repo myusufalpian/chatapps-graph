@@ -7,5 +7,7 @@
   "MEMBER_LEFT": "{actor} left the group",
   "MEMBER_MADE_ADMIN": "{actor} made {target} an admin",
   "ADMIN_REVOKED": "{actor} revoked admin status from {target}",
-  "GROUP_DISSOLVED": "Group has been dissolved"
+  "GROUP_DISSOLVED": "Group has been dissolved",
+  "DISAPPEARING_ENABLED": "{actor} enabled disappearing messages ({ttl})",
+  "DISAPPEARING_DISABLED": "{actor} disabled disappearing messages"
 }

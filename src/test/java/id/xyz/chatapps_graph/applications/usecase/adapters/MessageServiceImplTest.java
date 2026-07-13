@@ -22,7 +22,13 @@ import id.xyz.chatapps_graph.domain.entity.Message;
 import id.xyz.chatapps_graph.domain.entity.MessageReceipt;
 import id.xyz.chatapps_graph.domain.enums.MessageStatus;
 import id.xyz.chatapps_graph.domain.enums.ReceiptStatus;
+import id.xyz.chatapps_graph.applications.usecase.LinkPreviewService;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageEditHistoryRepository;
+import id.xyz.chatapps_graph.infrastructure.config.properties.ChatEditProperties;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+
 import id.xyz.chatapps_graph.domain.repository.ConversationParticipantRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageReceiptRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageRepository;
@@ -52,8 +58,14 @@ class MessageServiceImplTest {
   @Mock private RateLimitService rateLimitService;
   @Mock private id.xyz.chatapps_graph.domain.repository.MessageReactionRepository reactionRepository;
   @Mock private id.xyz.chatapps_graph.applications.usecase.PushNotificationService pushNotificationService;
+  @Mock private MessageEditHistoryRepository editHistoryRepository;
+  @Mock private ChatEditProperties chatEditProperties;
+  @Mock private LinkPreviewService linkPreviewService;
+  @Mock private SimpMessagingTemplate messagingTemplate;
+  @Mock private PlatformTransactionManager transactionManager;
 
   @InjectMocks private MessageServiceImpl messageService;
+
 
   private static final Long SENDER_ID = 1L;
   private static final Long RECIPIENT_ID = 2L;

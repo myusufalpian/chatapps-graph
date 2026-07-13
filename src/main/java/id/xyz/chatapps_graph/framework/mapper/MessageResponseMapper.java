@@ -3,10 +3,13 @@ package id.xyz.chatapps_graph.framework.mapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
+import id.xyz.chatapps_graph.domain.entity.LinkPreview;
 import id.xyz.chatapps_graph.domain.entity.Message;
 import id.xyz.chatapps_graph.domain.entity.MessageReaction;
 import id.xyz.chatapps_graph.domain.entity.MessageReceipt;
 import id.xyz.chatapps_graph.domain.entity.User;
+import id.xyz.chatapps_graph.framework.dto.LinkPreviewResponse;
+
 import id.xyz.chatapps_graph.domain.enums.MessageType;
 import id.xyz.chatapps_graph.domain.enums.ReceiptStatus;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
@@ -69,6 +72,7 @@ public class MessageResponseMapper {
       Map<Long, List<MessageReaction>> reactionsByMessage,
       Map<Long, Message> forwardMap,
       Map<Long, List<MessageReceipt>> receiptsByMessage,
+      Map<Long, LinkPreview> previewMap,
       Long requestUserId,
       String locale,
       boolean hideReadReceipt) {
@@ -98,10 +102,25 @@ public class MessageResponseMapper {
 
     Integer deliveryStatus = resolveDeliveryStatus(m, requestUserId, receiptsByMessage);
 
+    LinkPreviewResponse linkPreviewResp = null;
+    if (m.getPreviewId() != null && previewMap != null) {
+      LinkPreview lp = previewMap.get(m.getPreviewId());
+      if (lp != null) {
+        linkPreviewResp = LinkPreviewResponse.builder()
+            .url(lp.getUrl())
+            .title(lp.getTitle())
+            .description(lp.getDescription())
+            .imageUrl(lp.getImageUrl())
+            .siteName(lp.getSiteName())
+            .build();
+      }
+    }
+
     return MessageMapper.toResponse(
         m, senderUuid, conversationUuid, attResp, replyResp,
-        forwardedInfo, reactions, displayText, deliveryStatus);
+        forwardedInfo, reactions, displayText, deliveryStatus, linkPreviewResp);
   }
+
 
   private ReplyToResponse buildReplyResponse(Message replyMsg, Map<Long, User> userMap) {
     if (replyMsg == null) {
@@ -173,8 +192,9 @@ public class MessageResponseMapper {
 
       String actorUuid = payload.get("actorUuid");
       String targetUuid = payload.get("targetUuid");
+      String ttl = payload.get("ttl");
 
-      Map<String, String> params = HashMap.newHashMap(2);
+      Map<String, String> params = HashMap.newHashMap(3);
 
       if (actorUuid != null) {
         User actor = userByUuidMap.get(actorUuid);
@@ -186,9 +206,14 @@ public class MessageResponseMapper {
         params.put("target", target != null ? target.getUserFullName() : targetUuid);
       }
 
+      if (ttl != null) {
+        params.put("ttl", ttl);
+      }
+
       return translationService.translateSystemMessage(event, locale, params);
     } catch (Exception e) {
       return content;
     }
+
   }
 }

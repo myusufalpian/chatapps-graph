@@ -21,5 +21,7 @@ public record MessageResponse(
     Integer deliveryStatus,
     OffsetDateTime createdAt,
     OffsetDateTime editedAt,
-    String displayText
+    String displayText,
+    LinkPreviewResponse linkPreview
 ) {}
+

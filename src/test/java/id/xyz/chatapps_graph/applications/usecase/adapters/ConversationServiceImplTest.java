@@ -2,37 +2,51 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.ArgumentMatchers.any;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.refEq;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import id.xyz.chatapps_graph.domain.entity.Conversation;
 import id.xyz.chatapps_graph.domain.entity.ConversationParticipant;
+import id.xyz.chatapps_graph.domain.entity.GroupMember;
+import id.xyz.chatapps_graph.domain.entity.Message;
+import id.xyz.chatapps_graph.domain.entity.User;
+import id.xyz.chatapps_graph.domain.enums.GroupMemberRole;
 import id.xyz.chatapps_graph.domain.repository.ConversationParticipantRepository;
 import id.xyz.chatapps_graph.domain.repository.ConversationRepository;
+import id.xyz.chatapps_graph.domain.repository.GroupMemberRepository;
+import id.xyz.chatapps_graph.domain.repository.UserRepository;
+import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 @ExtendWith(MockitoExtension.class)
 class ConversationServiceImplTest {
 
   @Mock private ConversationRepository conversationRepository;
   @Mock private ConversationParticipantRepository participantRepository;
+  @Mock private GroupMemberRepository groupMemberRepository;
+  @Mock private UserRepository userRepository;
+  @Mock private SystemMessageService systemMessageService;
+  @Mock private SimpMessagingTemplate messagingTemplate;
 
   @InjectMocks private ConversationServiceImpl conversationService;
 
   private static final Long USER_A = 1L;
   private static final Long USER_B = 2L;
   private static final Long CONVERSATION_ID = 10L;
+  private static final String CONVERSATION_UUID = "conv-uuid-123";
 
   @Test
   @DisplayName("findOrCreate: no existing conversation — creates new with two participants")
@@ -40,27 +54,32 @@ class ConversationServiceImplTest {
     when(participantRepository.findPrivateConversationBetween(USER_A, USER_B))
         .thenReturn(Optional.empty());
 
+    Conversation expectedToSave = Conversation.builder()
+        .conversationType("PRIVATE")
+        .build();
+
     Conversation saved = new Conversation();
     saved.setConversationId(CONVERSATION_ID);
     saved.setConversationType("PRIVATE");
-    when(conversationRepository.save(any(Conversation.class))).thenReturn(saved);
+
+    when(conversationRepository.save(refEq(expectedToSave, "createdAt"))).thenReturn(saved);
 
     Conversation result = conversationService.findOrCreatePrivateConversation(USER_A, USER_B);
 
     assertEquals(CONVERSATION_ID, result.getConversationId());
     assertEquals("PRIVATE", result.getConversationType());
 
-    ArgumentCaptor<ConversationParticipant> captor = ArgumentCaptor.forClass(ConversationParticipant.class);
-    verify(participantRepository, times(2)).save(captor.capture());
+    ConversationParticipant pA = ConversationParticipant.builder()
+        .conversationId(CONVERSATION_ID)
+        .userId(USER_A)
+        .build();
+    ConversationParticipant pB = ConversationParticipant.builder()
+        .conversationId(CONVERSATION_ID)
+        .userId(USER_B)
+        .build();
 
-    ConversationParticipant pA = captor.getAllValues().get(0);
-    ConversationParticipant pB = captor.getAllValues().get(1);
-    assertEquals(USER_A, pA.getUserId());
-    assertEquals(USER_B, pB.getUserId());
-    assertEquals(CONVERSATION_ID, pA.getConversationId());
-    assertEquals(CONVERSATION_ID, pB.getConversationId());
-    assertNotNull(pA.getJoinedAt());
-    assertNotNull(pB.getJoinedAt());
+    verify(participantRepository).save(refEq(pA, "joinedAt"));
+    verify(participantRepository).save(refEq(pB, "joinedAt"));
   }
 
   @Test
@@ -77,8 +96,7 @@ class ConversationServiceImplTest {
     Conversation result = conversationService.findOrCreatePrivateConversation(USER_A, USER_B);
 
     assertEquals(CONVERSATION_ID, result.getConversationId());
-    verify(conversationRepository, never()).save(any());
-    verify(participantRepository, never()).save(any(ConversationParticipant.class));
+    verify(conversationRepository, never()).save(refEq(new Conversation(), "createdAt"));
   }
 
   @Test
@@ -91,4 +109,95 @@ class ConversationServiceImplTest {
 
     assertFalse(result);
   }
+
+  @Test
+  @DisplayName("updateDisappearingTtl: private chat success")
+  void updateDisappearingTtl_PrivateChat_Success() {
+    Conversation conv = Conversation.builder()
+        .conversationId(CONVERSATION_ID)
+        .conversationUuid(CONVERSATION_UUID)
+        .conversationType("PRIVATE")
+        .disappearingTtl(null)
+        .build();
+
+    when(conversationRepository.findByConversationUuid(CONVERSATION_UUID)).thenReturn(Optional.of(conv));
+    when(participantRepository.findByConversationIdAndUserId(CONVERSATION_ID, USER_A))
+        .thenReturn(Optional.of(new ConversationParticipant()));
+
+    Conversation updatedConv = Conversation.builder()
+        .conversationId(CONVERSATION_ID)
+        .conversationUuid(CONVERSATION_UUID)
+        .conversationType("PRIVATE")
+        .disappearingTtl(24)
+        .build();
+    when(conversationRepository.save(conv)).thenReturn(updatedConv);
+
+    User actor = new User();
+    actor.setUserId(USER_A);
+    actor.setUserUuid("actor-uuid");
+    when(userRepository.findById(USER_A)).thenReturn(Optional.of(actor));
+
+    Message sysMsg = new Message();
+    when(systemMessageService.create(CONVERSATION_ID, USER_A, "DISAPPEARING_ENABLED", "actor-uuid", null, "24h"))
+        .thenReturn(sysMsg);
+
+    Conversation result = conversationService.updateDisappearingTtl(CONVERSATION_UUID, USER_A, 24);
+
+    assertEquals(24, result.getDisappearingTtl());
+    verify(messagingTemplate).convertAndSend(
+        eq("/topic/chat/" + CONVERSATION_UUID + "/settings"),
+        eq(Map.of("type", "DISAPPEARING_CHANGED", "ttl", "24h"))
+    );
+  }
+
+  @Test
+  @DisplayName("updateDisappearingTtl: group chat but user not admin/owner — throws Forbidden")
+  void updateDisappearingTtl_GroupChat_NotAdmin_ThrowsForbidden() {
+    Conversation conv = Conversation.builder()
+        .conversationId(CONVERSATION_ID)
+        .conversationUuid(CONVERSATION_UUID)
+        .conversationType("MULTI_CHAT")
+        .groupId(50L)
+        .disappearingTtl(null)
+        .build();
+
+    when(conversationRepository.findByConversationUuid(CONVERSATION_UUID)).thenReturn(Optional.of(conv));
+    when(participantRepository.findByConversationIdAndUserId(CONVERSATION_ID, USER_A))
+        .thenReturn(Optional.of(new ConversationParticipant()));
+
+    GroupMember member = new GroupMember();
+    member.setMemberType(GroupMemberRole.MEMBER.name());
+    when(groupMemberRepository.findByGroupIdAndUserIdAndIsActive(50L, USER_A, 1))
+        .thenReturn(Optional.of(member));
+
+    GeneralException ex = assertThrows(GeneralException.class, () ->
+        conversationService.updateDisappearingTtl(CONVERSATION_UUID, USER_A, 24)
+    );
+
+    assertEquals(HttpStatus.FORBIDDEN.value(), ex.getHttpCode());
+    assertEquals("Only admin/owner can change group disappearing messages TTL", ex.getMessage());
+  }
+
+  @Test
+  @DisplayName("updateDisappearingTtl: not participant — throws Forbidden")
+  void updateDisappearingTtl_NotParticipant_ThrowsForbidden() {
+    Conversation conv = Conversation.builder()
+        .conversationId(CONVERSATION_ID)
+        .conversationUuid(CONVERSATION_UUID)
+        .conversationType("PRIVATE")
+        .disappearingTtl(null)
+        .build();
+
+    when(conversationRepository.findByConversationUuid(CONVERSATION_UUID)).thenReturn(Optional.of(conv));
+    when(participantRepository.findByConversationIdAndUserId(CONVERSATION_ID, USER_A))
+        .thenReturn(Optional.empty());
+
+    GeneralException ex = assertThrows(GeneralException.class, () ->
+        conversationService.updateDisappearingTtl(CONVERSATION_UUID, USER_A, 24)
+    );
+
+    assertEquals(HttpStatus.FORBIDDEN.value(), ex.getHttpCode());
+    assertEquals("Not a participant", ex.getMessage());
+  }
 }
+

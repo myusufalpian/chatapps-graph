@@ -8,10 +8,15 @@ import id.xyz.chatapps_graph.applications.usecase.MessageService;
 import id.xyz.chatapps_graph.applications.usecase.ReadReceiptResult;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
 import id.xyz.chatapps_graph.domain.entity.Conversation;
+import id.xyz.chatapps_graph.domain.entity.LinkPreview;
 import id.xyz.chatapps_graph.domain.entity.Message;
 import id.xyz.chatapps_graph.domain.entity.MessageReaction;
 import id.xyz.chatapps_graph.domain.entity.MessageReceipt;
 import id.xyz.chatapps_graph.domain.entity.User;
+import id.xyz.chatapps_graph.domain.repository.LinkPreviewRepository;
+import id.xyz.chatapps_graph.framework.dto.DisappearingTtlRequest;
+import id.xyz.chatapps_graph.framework.dto.DisappearingTtlResponse;
+
 import id.xyz.chatapps_graph.domain.enums.ReceiptStatus;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
 import id.xyz.chatapps_graph.domain.repository.ConversationRepository;
@@ -89,6 +94,8 @@ public class ChatController extends BaseApiController {
   private final SimpMessagingTemplate messagingTemplate;
   private final LocaleResolver localeResolver;
   private final MessageResponseMapper messageResponseMapper;
+  private final LinkPreviewRepository linkPreviewRepository;
+
 
   @PostMapping("/messages")
   public ResponseEntity<BaseResponse<MessageResponse>> sendMessage(
@@ -143,7 +150,7 @@ public class ChatController extends BaseApiController {
 
     String nextCursor = null;
     if (hasMore) {
-      Message last = resultMessages.get(resultMessages.size() - 1);
+      Message last = resultMessages.getLast();
       nextCursor = CursorUtil.encode(last.getCreatedAt(), last.getMessageId());
     }
 
@@ -356,6 +363,28 @@ public class ChatController extends BaseApiController {
     return success("Conversation unmuted");
   }
 
+  @PutMapping("/conversations/{uuid}/disappearing")
+  public ResponseEntity<BaseResponse<DisappearingTtlResponse>> updateDisappearingTtl(
+      @RequestAttribute("X-User-Id") Long userId,
+      @PathVariable("uuid") String uuid,
+      @Valid @RequestBody DisappearingTtlRequest request) {
+
+    Integer ttlHours = switch (request.ttl()) {
+      case "24h" -> 24;
+      case "7d" -> 168;
+      case "30d" -> 720;
+      case "off" -> null;
+      case null, default ->
+          throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_TTL", "Invalid TTL value");
+    };
+
+    Conversation conversation = conversationService.updateDisappearingTtl(uuid, userId, ttlHours);
+    String currentTtl = conversation.getDisappearingTtl() == null ? "off" : request.ttl();
+
+    return success(new DisappearingTtlResponse(conversation.getConversationUuid(), currentTtl), "Disappearing messages settings updated");
+  }
+
+
   @PutMapping("/messages/{uuid}/reactions")
   public ResponseEntity<BaseResponse<Void>> addReaction(
       @RequestAttribute("X-User-Id") Long userId,
@@ -472,6 +501,16 @@ public class ChatController extends BaseApiController {
     // Batch fetch forwarded originals
     Map<Long, Message> forwardMap = loadForwardedOriginals(messages);
 
+    // Batch fetch link previews
+    List<Long> previewIds = messages.stream()
+        .map(Message::getPreviewId)
+        .filter(Objects::nonNull)
+        .distinct()
+        .toList();
+    Map<Long, LinkPreview> previewMap = previewIds.isEmpty() ? Map.of()
+        : linkPreviewRepository.findAllById(previewIds).stream()
+            .collect(Collectors.toMap(LinkPreview::getPreviewId, Function.identity()));
+
     // Build UUID-keyed user map for O(1) system message placeholder resolution
     Map<String, User> userByUuidMap = userMap.values().stream()
         .collect(Collectors.toMap(User::getUserUuid, Function.identity(), (a, b) -> a));
@@ -479,8 +518,9 @@ public class ChatController extends BaseApiController {
     return messages.stream()
         .map(m -> messageResponseMapper.toResponse(m, conversationUuid, userMap, userByUuidMap,
             attachmentMap, replyMap, reactionsByMessage, forwardMap, receiptsByMessage,
-            requestUserId, locale, hideReadReceipt))
+            previewMap, requestUserId, locale, hideReadReceipt))
         .toList();
+
   }
 
   private Map<Long, Attachment> loadAttachments(List<Message> messages) {

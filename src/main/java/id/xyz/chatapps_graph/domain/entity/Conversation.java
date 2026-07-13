@@ -42,9 +42,13 @@ public class Conversation {
   @Column(name = "created_at", updatable = false)
   private OffsetDateTime createdAt;
 
+  @Column(name = "disappearing_ttl")
+  private Integer disappearingTtl;
+
   @PrePersist
   void prePersist() {
     if (!StringUtils.hasLength(conversationUuid)) conversationUuid = UUID.randomUUID().toString();
     if (createdAt == null) createdAt = OffsetDateTime.now();
   }
 }
+
