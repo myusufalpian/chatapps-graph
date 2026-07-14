@@ -53,8 +53,11 @@ public class OtpServiceImpl implements OtpService {
           redis.call('DEL', otpKey, attemptKey)
           return 1
         end
-        redis.call('INCR', attemptKey)
+        local newAttempts = redis.call('INCR', attemptKey)
         redis.call('EXPIRE', attemptKey, ttl)
+        if newAttempts >= maxAttempts then
+          redis.call('DEL', otpKey, attemptKey)
+        end
         return 0
         """, Long.class);
   }

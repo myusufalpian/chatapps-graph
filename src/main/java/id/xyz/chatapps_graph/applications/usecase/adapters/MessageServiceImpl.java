@@ -3,9 +3,10 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
 import id.xyz.chatapps_graph.applications.usecase.DeliveryReceiptResult;
-import id.xyz.chatapps_graph.applications.usecase.LinkPreviewService;
+import id.xyz.chatapps_graph.framework.dto.MessageReactionResult;
 import id.xyz.chatapps_graph.applications.usecase.MessageEditResult;
 import id.xyz.chatapps_graph.applications.usecase.MessageService;
+import id.xyz.chatapps_graph.framework.dto.SendMessageResult;
 import id.xyz.chatapps_graph.applications.usecase.PushNotificationService;
 import id.xyz.chatapps_graph.applications.usecase.RateLimitService;
 import id.xyz.chatapps_graph.applications.usecase.ReadReceiptResult;
@@ -26,7 +27,6 @@ import id.xyz.chatapps_graph.domain.repository.MessageReactionRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageReceiptRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
-import id.xyz.chatapps_graph.framework.dto.LinkPreviewResponse;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.config.properties.ChatEditProperties;
 import id.xyz.chatapps_graph.infrastructure.constant.ErrorConstants;
@@ -35,20 +35,19 @@ import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil;
 import id.xyz.chatapps_graph.infrastructure.utility.CursorUtil.CursorPosition;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import id.xyz.chatapps_graph.framework.dto.LinkPreviewTask;
+import id.xyz.chatapps_graph.infrastructure.config.rabbitmq.RabbitMQConfig;
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
+
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 @Slf4j
@@ -68,14 +67,11 @@ public class MessageServiceImpl implements MessageService {
   private final PushNotificationService pushNotificationService;
   private final MessageEditHistoryRepository editHistoryRepository;
   private final ChatEditProperties chatEditProperties;
-  private final LinkPreviewService linkPreviewService;
-  private final SimpMessagingTemplate messagingTemplate;
-  private final PlatformTransactionManager transactionManager;
-
+  private final RabbitTemplate rabbitTemplate;
 
   @Override
   @Transactional
-  public Message sendMessage(Long senderId, String recipientUuid, String conversationUuid,
+  public SendMessageResult sendMessage(Long senderId, String recipientUuid, String conversationUuid,
       String messageType, String content, Long attachmentId, String replyToMessageUuid) {
 
     if (rateLimitService.isChatRateLimited(senderId)) {
@@ -113,7 +109,6 @@ public class MessageServiceImpl implements MessageService {
       List<String> urls = extractUrls(content);
       if (!urls.isEmpty()) {
         String firstUrl = urls.getFirst();
-        String messageUuid = message.getMessageUuid();
         String convUuid = conversation.getConversationUuid();
         Long msgId = message.getMessageId();
 
@@ -121,15 +116,22 @@ public class MessageServiceImpl implements MessageService {
           TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-              triggerAsyncLinkPreview(firstUrl, msgId, messageUuid, convUuid);
+              triggerAsyncLinkPreview(firstUrl, msgId, convUuid);
             }
           });
         } else {
-          triggerAsyncLinkPreview(firstUrl, msgId, messageUuid, convUuid);
+          triggerAsyncLinkPreview(firstUrl, msgId, convUuid);
         }
       }
 
-      return message;
+      User sender = userRepository.findById(senderId)
+          .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.USER_NOT_FOUND, "User not found"));
+
+      return SendMessageResult.builder()
+          .message(message)
+          .senderUuid(sender.getUserUuid())
+          .conversationUuid(conversation.getConversationUuid())
+          .build();
     } catch (Exception e) {
       if (filePath != null) {
         attachmentService.deleteFile(filePath);
@@ -208,8 +210,17 @@ public class MessageServiceImpl implements MessageService {
     // Always reset unread count (UX: badge disappears regardless of privacy setting)
     participantRepository.resetUnreadCount(conversation.getConversationId(), userId);
 
-    return shouldUpdateReceipts && !senderIds.isEmpty()
-        ? new ReadReceiptResult(true, senderIds)
+    List<String> targetUserPhones = List.of();
+    if (shouldUpdateReceipts && !senderIds.isEmpty()) {
+      targetUserPhones = userRepository.findAllById(senderIds).stream()
+          .filter(sender -> !Boolean.TRUE.equals(sender.getHideReadReceipt()))
+          .filter(sender -> org.springframework.util.StringUtils.hasLength(sender.getUserPhone()))
+          .map(User::getUserPhone)
+          .toList();
+    }
+
+    return shouldUpdateReceipts && !targetUserPhones.isEmpty()
+        ? new ReadReceiptResult(true, targetUserPhones, reader != null ? reader.getUserUuid() : null)
         : ReadReceiptResult.hidden();
   }
 
@@ -235,8 +246,18 @@ public class MessageServiceImpl implements MessageService {
       senderIds = List.of();
     }
 
-    return !senderIds.isEmpty()
-        ? new DeliveryReceiptResult(true, senderIds)
+    List<String> targetUserPhones = List.of();
+    if (!senderIds.isEmpty()) {
+      targetUserPhones = userRepository.findAllById(senderIds).stream()
+          .filter(sender -> org.springframework.util.StringUtils.hasLength(sender.getUserPhone()))
+          .map(User::getUserPhone)
+          .toList();
+    }
+
+    User reader = userRepository.findById(userId).orElse(null);
+
+    return !targetUserPhones.isEmpty()
+        ? new DeliveryReceiptResult(true, targetUserPhones, reader != null ? reader.getUserUuid() : null)
         : DeliveryReceiptResult.hidden();
   }
 
@@ -326,21 +347,49 @@ public class MessageServiceImpl implements MessageService {
 
   @Override
   @Transactional
-  public void addReaction(Long userId, Long messageId, String emoji) {
+  public MessageReactionResult addReaction(Long userId, String messageUuid, String emoji) {
     if (rateLimitService.isReactionRateLimited(userId)) {
       throw new GeneralException(429, ErrorConstants.RATE_LIMITED, "Too many reactions, try again later");
     }
+    Message message = messageRepository.findByMessageUuid(messageUuid)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.MESSAGE_NOT_FOUND, "Message not found"));
+    validateParticipant(message.getConversationId(), userId);
+
+    Long messageId = message.getMessageId();
     MessageReaction reaction = reactionRepository.findByMessageIdAndUserId(messageId, userId)
         .orElse(MessageReaction.builder().messageId(messageId).userId(userId).build());
     reaction.setEmoji(emoji);
     reactionRepository.save(reaction);
+
+    Conversation conv = conversationService.findConversationById(message.getConversationId());
+    User user = userRepository.findById(userId).orElse(null);
+    String userUuid = user != null ? user.getUserUuid() : null;
+
+    return MessageReactionResult.builder()
+        .conversationUuid(conv.getConversationUuid())
+        .userUuid(userUuid)
+        .emoji(emoji)
+        .build();
   }
 
   @Override
   @Transactional
-  public void removeReaction(Long userId, Long messageId) {
-    reactionRepository.findByMessageIdAndUserId(messageId, userId)
+  public MessageReactionResult removeReaction(Long userId, String messageUuid) {
+    Message message = messageRepository.findByMessageUuid(messageUuid)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.MESSAGE_NOT_FOUND, "Message not found"));
+    validateParticipant(message.getConversationId(), userId);
+
+    reactionRepository.findByMessageIdAndUserId(message.getMessageId(), userId)
         .ifPresent(reactionRepository::delete);
+
+    Conversation conv = conversationService.findConversationById(message.getConversationId());
+    User user = userRepository.findById(userId).orElse(null);
+    String userUuid = user != null ? user.getUserUuid() : null;
+
+    return MessageReactionResult.builder()
+        .conversationUuid(conv.getConversationUuid())
+        .userUuid(userUuid)
+        .build();
   }
 
   @Override
@@ -406,8 +455,12 @@ public class MessageServiceImpl implements MessageService {
       throw new GeneralException(HttpStatus.BAD_REQUEST.value(), ErrorConstants.EDIT_WINDOW_EXPIRED, "Edit window has expired");
     }
 
+    Conversation conv = conversationService.findConversationById(message.getConversationId());
+    User sender = userRepository.findById(userId)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), ErrorConstants.USER_NOT_FOUND, "User not found"));
+
     if (Objects.equals(message.getContent(), newContent)) {
-      return new MessageEditResult(message, false);
+      return new MessageEditResult(message, false, conv.getConversationUuid(), sender.getUserUuid());
     }
 
     editHistoryRepository.save(MessageEditHistory.builder()
@@ -418,7 +471,7 @@ public class MessageServiceImpl implements MessageService {
 
     message.setContent(newContent);
     message.setEditedAt(now);
-    return new MessageEditResult(messageRepository.save(message), true);
+    return new MessageEditResult(messageRepository.save(message), true, conv.getConversationUuid(), sender.getUserUuid());
   }
 
   private static final java.util.regex.Pattern URL_PATTERN = java.util.regex.Pattern.compile(
@@ -437,37 +490,24 @@ public class MessageServiceImpl implements MessageService {
     return urls;
   }
 
-  private void triggerAsyncLinkPreview(String url, Long messageId, String messageUuid, String conversationUuid) {
-    linkPreviewService.fetchPreviewAsync(url).thenAccept(preview -> {
-      if (preview != null) {
-        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
-        txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        txTemplate.executeWithoutResult(status -> {
-          Message msg = messageRepository.findById(messageId).orElse(null);
-          if (msg != null) {
-            msg.setPreviewId(preview.getPreviewId());
-            messageRepository.save(msg);
-          }
-        });
+  private void triggerAsyncLinkPreview(String url, Long messageId, String conversationUuid) {
+    LinkPreviewTask task = LinkPreviewTask.builder()
+        .messageId(messageId)
+        .url(url)
+        .conversationUuid(conversationUuid)
+        .build();
 
-        LinkPreviewResponse previewResponse = LinkPreviewResponse.builder()
-            .url(preview.getUrl())
-            .title(preview.getTitle())
-            .description(preview.getDescription())
-            .imageUrl(preview.getImageUrl())
-            .siteName(preview.getSiteName())
-            .build();
+    rabbitTemplate.convertAndSend(
+        RabbitMQConfig.CHAT_TASK_EXCHANGE,
+        RabbitMQConfig.LINK_PREVIEWS_ROUTING_KEY,
+        task
+    );
+  }
 
-        messagingTemplate.convertAndSend(
-            "/topic/chat/" + conversationUuid,
-            Map.of(
-                "type", "LINK_PREVIEW_READY",
-                "messageUuid", messageUuid,
-                "preview", previewResponse
-            )
-        );
-      }
-    });
+  @Override
+  @Transactional(readOnly = true)
+  public String resolveUserUuid(Long userId) {
+    return userRepository.findById(userId).map(User::getUserUuid).orElse(null);
   }
 }
 

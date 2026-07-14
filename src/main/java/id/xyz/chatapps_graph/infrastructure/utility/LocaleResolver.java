@@ -5,7 +5,7 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-@Component
+@Component("customLocaleResolver")
 public class LocaleResolver {
 
   private static final Set<String> SUPPORTED_LOCALES = Set.of("id", "en");

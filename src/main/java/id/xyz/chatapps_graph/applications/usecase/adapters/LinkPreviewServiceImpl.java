@@ -1,22 +1,28 @@
 package id.xyz.chatapps_graph.applications.usecase.adapters;
 
 import id.xyz.chatapps_graph.applications.usecase.LinkPreviewService;
+import id.xyz.chatapps_graph.applications.usecase.WebSocketBroadcastService;
 import id.xyz.chatapps_graph.domain.entity.LinkPreview;
+import id.xyz.chatapps_graph.domain.entity.Message;
 import id.xyz.chatapps_graph.domain.repository.LinkPreviewRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageRepository;
+import id.xyz.chatapps_graph.framework.dto.LinkPreviewResponse;
 import java.net.InetAddress;
 import java.net.URI;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
-import java.util.concurrent.CompletableFuture;
+import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
@@ -24,45 +30,93 @@ import org.springframework.transaction.annotation.Transactional;
 public class LinkPreviewServiceImpl implements LinkPreviewService {
 
   private final LinkPreviewRepository repository;
+  private final MessageRepository messageRepository;
+  private final WebSocketBroadcastService broadcastService;
+  private final PlatformTransactionManager transactionManager;
 
   @Override
-  @Async("taskExecutor")
-  @Transactional
-  public CompletableFuture<LinkPreview> fetchPreviewAsync(String url) {
+  public LinkPreview fetchPreview(String url) {
     try {
       if (url == null || url.trim().isEmpty()) {
-        return CompletableFuture.completedFuture(null);
+        return null;
       }
 
       String hash = sha256(url);
-      LinkPreview cached = getCachedPreviewIfValid(hash);
-      if (cached != null) {
-        return CompletableFuture.completedFuture(cached);
+
+      // Database read in its own short transaction
+      TransactionTemplate readTx = new TransactionTemplate(transactionManager);
+      readTx.setReadOnly(true);
+      Optional<LinkPreview> cachedOpt = readTx.execute(status ->
+          repository.findByUrlHash(hash)
+              .filter(preview -> preview.getFetchedAt() != null
+                  && preview.getFetchedAt().plusHours(24).isAfter(LocalDateTime.now()))
+      );
+      if (cachedOpt != null && cachedOpt.isPresent()) {
+        return cachedOpt.get();
       }
 
       URI uri = URI.create(url);
       String host = uri.getHost();
       if (host == null || isPrivateIp(host)) {
         log.warn("Blocked link preview request to private/local host: {}", host);
-        return CompletableFuture.completedFuture(null);
+        return null;
       }
 
-      LinkPreview existing = repository.findByUrlHash(hash).orElse(null);
+      // Fetch existing entity (if any) for update, in a read transaction
+      LinkPreview existing = readTx.execute(status ->
+          repository.findByUrlHash(hash).orElse(null)
+      );
+
+      // Network I/O outside any transaction
       LinkPreview preview = parseAndBuildPreview(url, hash, existing);
-      LinkPreview saved = repository.save(preview);
-      return CompletableFuture.completedFuture(saved);
+
+      // Database write in its own short transaction
+      TransactionTemplate writeTx = new TransactionTemplate(transactionManager);
+      writeTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+      return writeTx.execute(status -> repository.save(preview));
 
     } catch (Exception e) {
       log.error("Failed to fetch link preview for url: {}", url, e);
-      return CompletableFuture.completedFuture(null);
+      return null;
     }
   }
 
-  private LinkPreview getCachedPreviewIfValid(String hash) {
-    return repository.findByUrlHash(hash)
-        .filter(preview -> preview.getFetchedAt() != null 
-            && preview.getFetchedAt().plusHours(24).isAfter(LocalDateTime.now()))
-        .orElse(null);
+  @Override
+  public void processLinkPreviewTask(Long messageId, String url, String conversationUuid) {
+    LinkPreview preview = fetchPreview(url);
+    if (preview == null) {
+      return;
+    }
+
+    TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+    txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    txTemplate.executeWithoutResult(status -> {
+      Message msg = messageRepository.findById(messageId).orElse(null);
+      if (msg != null) {
+        msg.setPreviewId(preview.getPreviewId());
+        messageRepository.save(msg);
+      }
+    });
+
+    Message msg = messageRepository.findById(messageId).orElse(null);
+    String messageUuid = msg != null ? msg.getMessageUuid() : "";
+
+    LinkPreviewResponse previewResponse = LinkPreviewResponse.builder()
+        .url(preview.getUrl())
+        .title(preview.getTitle())
+        .description(preview.getDescription())
+        .imageUrl(preview.getImageUrl())
+        .siteName(preview.getSiteName())
+        .build();
+
+    broadcastService.broadcast(
+        "/topic/chat/" + conversationUuid,
+        Map.of(
+            "type", "LINK_PREVIEW_READY",
+            "messageUuid", messageUuid,
+            "preview", previewResponse
+        )
+    );
   }
 
   private LinkPreview parseAndBuildPreview(String url, String hash, LinkPreview cached) throws Exception {

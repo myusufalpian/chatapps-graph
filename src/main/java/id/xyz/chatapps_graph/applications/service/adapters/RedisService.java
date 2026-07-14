@@ -23,7 +23,7 @@ public class RedisService implements CachePort {
   private final RedisTemplate<String, Object> redisTemplate;
 
   @Autowired
-  public RedisService(RedisTemplate<String, Object> redisTemplate) {
+  public RedisService(@org.springframework.beans.factory.annotation.Qualifier("objectRedisTemplate") RedisTemplate<String, Object> redisTemplate) {
     this.redisTemplate = redisTemplate;
   }
 

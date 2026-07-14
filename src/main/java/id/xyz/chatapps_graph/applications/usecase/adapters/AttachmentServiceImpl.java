@@ -3,8 +3,10 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 import id.xyz.chatapps_graph.applications.service.FileStoragePort;
 import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
+import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.enums.AttachmentType;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
+import id.xyz.chatapps_graph.domain.repository.UserRepository;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.config.properties.MediaProperties;
 import id.xyz.chatapps_graph.infrastructure.utility.ImageProcessingService;
@@ -30,11 +32,16 @@ public class AttachmentServiceImpl implements AttachmentService {
   private final MediaProperties mediaProperties;
   private final ImageProcessingService imageProcessingService;
   private final VideoThumbnailService videoThumbnailService;
+  private final UserRepository userRepository;
 
   @Override
-  public Attachment validateAndUpload(MultipartFile file, String attachmentType, Long uploaderId, String uploaderUuid) {
+  public Attachment validateAndUpload(MultipartFile file, String attachmentType, Long uploaderId) {
     AttachmentType type = AttachmentType.valueOf(attachmentType);
     validateFile(file, type);
+
+    User uploader = userRepository.findById(uploaderId)
+        .orElseThrow(() -> new GeneralException(HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User not found"));
+    String uploaderUuid = uploader.getUserUuid();
 
     String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "file";
     String basePath = "chat/" + uploaderUuid + "/" + System.currentTimeMillis();

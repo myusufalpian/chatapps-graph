@@ -13,6 +13,7 @@ import id.xyz.chatapps_graph.domain.entity.ConversationParticipant;
 import id.xyz.chatapps_graph.domain.entity.Message;
 import id.xyz.chatapps_graph.domain.enums.MessageStatus;
 import id.xyz.chatapps_graph.domain.enums.ReceiptStatus;
+import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
 import id.xyz.chatapps_graph.domain.repository.ConversationParticipantRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageReceiptRepository;
@@ -87,6 +88,9 @@ class MessageServiceImplDenormalizationTest {
     ConversationParticipant pRecipient = ConversationParticipant.builder().userId(RECIPIENT_ID).conversationId(CONVERSATION_ID).build();
     when(participantRepository.findAllByConversationId(CONVERSATION_ID)).thenReturn(List.of(pSender, pRecipient));
 
+    User sender = User.builder().userId(SENDER_ID).userUuid("sender-uuid").build();
+    when(userRepository.findById(SENDER_ID)).thenReturn(Optional.of(sender));
+
     messageService.sendMessage(SENDER_ID, null, CONVERSATION_UUID, "TEXT", "Hello world", null, null);
 
     verify(participantRepository).incrementUnreadAndUpdateLastMessage(
@@ -109,6 +113,9 @@ class MessageServiceImplDenormalizationTest {
     ConversationParticipant pRecipient = ConversationParticipant.builder().userId(RECIPIENT_ID).conversationId(CONVERSATION_ID).build();
     when(participantRepository.findAllByConversationId(CONVERSATION_ID)).thenReturn(List.of(pSender, pRecipient));
 
+    User sender = User.builder().userId(SENDER_ID).userUuid("sender-uuid").build();
+    when(userRepository.findById(SENDER_ID)).thenReturn(Optional.of(sender));
+
     messageService.sendMessage(SENDER_ID, null, CONVERSATION_UUID, "TEXT", "Hello world", null, null);
 
     // incrementUnreadAndUpdateLastMessage excludes sender by SQL, so verify call with senderId param
@@ -129,6 +136,9 @@ class MessageServiceImplDenormalizationTest {
     ConversationParticipant pSender = ConversationParticipant.builder().userId(SENDER_ID).conversationId(CONVERSATION_ID).build();
     ConversationParticipant pRecipient = ConversationParticipant.builder().userId(RECIPIENT_ID).conversationId(CONVERSATION_ID).build();
     when(participantRepository.findAllByConversationId(CONVERSATION_ID)).thenReturn(List.of(pSender, pRecipient));
+
+    User sender = User.builder().userId(SENDER_ID).userUuid("sender-uuid").build();
+    when(userRepository.findById(SENDER_ID)).thenReturn(Optional.of(sender));
 
     messageService.sendMessage(SENDER_ID, null, CONVERSATION_UUID, "TEXT", "Hello world", null, null);
 

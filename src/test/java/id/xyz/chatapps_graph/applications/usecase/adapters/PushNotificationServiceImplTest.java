@@ -22,8 +22,10 @@ import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.entity.UserDevice;
 import id.xyz.chatapps_graph.domain.repository.ConversationParticipantRepository;
 import id.xyz.chatapps_graph.domain.repository.ConversationRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageRepository;
 import id.xyz.chatapps_graph.domain.repository.UserDeviceRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +49,8 @@ class PushNotificationServiceImplTest {
   @Mock private UserDeviceRepository userDeviceRepository;
   @Mock private UserRepository userRepository;
   @Mock private ConversationRepository conversationRepository;
+  @Mock private MessageRepository messageRepository;
+  @Mock private RabbitTemplate rabbitTemplate;
 
   @InjectMocks private PushNotificationServiceImpl pushService;
 
@@ -97,6 +101,7 @@ class PushNotificationServiceImplTest {
   }
 
   private void setupStandardMocks(Message message) {
+    when(messageRepository.findById(message.getMessageId())).thenReturn(Optional.of(message));
     when(participantRepository.findAllByConversationId(CONVERSATION_ID))
         .thenReturn(List.of(buildParticipant(SENDER_ID, false), buildParticipant(RECIPIENT_ID, false)));
     when(userDeviceRepository.findByUserIdInAndDeletedAtIsNull(List.of(RECIPIENT_ID)))
@@ -132,7 +137,7 @@ class PushNotificationServiceImplTest {
     when(batchResponse.getResponses()).thenReturn(List.of(successResponse));
     when(firebaseMessaging.sendEachForMulticast(any(MulticastMessage.class))).thenReturn(batchResponse);
 
-    pushService.sendPushForNewMessage(message, SENDER_ID, CONVERSATION_ID);
+    pushService.executeSendPush(message.getMessageId(), SENDER_ID, CONVERSATION_ID);
 
     ArgumentCaptor<MulticastMessage> captor = ArgumentCaptor.forClass(MulticastMessage.class);
     verify(firebaseMessaging).sendEachForMulticast(captor.capture());
@@ -150,10 +155,11 @@ class PushNotificationServiceImplTest {
   @DisplayName("sendPush: conversation muted — skips user")
   void sendPush_ConversationMuted_SkipsUser() throws Exception {
     Message message = buildMessage("Hello");
+    when(messageRepository.findById(message.getMessageId())).thenReturn(Optional.of(message));
     when(participantRepository.findAllByConversationId(CONVERSATION_ID))
         .thenReturn(List.of(buildParticipant(SENDER_ID, false), buildParticipant(RECIPIENT_ID, true)));
 
-    pushService.sendPushForNewMessage(message, SENDER_ID, CONVERSATION_ID);
+    pushService.executeSendPush(message.getMessageId(), SENDER_ID, CONVERSATION_ID);
 
     verify(userDeviceRepository, never()).findByUserIdInAndDeletedAtIsNull(any());
     verify(firebaseMessaging, never()).sendEachForMulticast(any());
@@ -163,12 +169,13 @@ class PushNotificationServiceImplTest {
   @DisplayName("sendPush: no active tokens — no FCM call")
   void sendPush_NoActiveTokens_NoFcmCall() throws Exception {
     Message message = buildMessage("Hello");
+    when(messageRepository.findById(message.getMessageId())).thenReturn(Optional.of(message));
     when(participantRepository.findAllByConversationId(CONVERSATION_ID))
         .thenReturn(List.of(buildParticipant(SENDER_ID, false), buildParticipant(RECIPIENT_ID, false)));
     when(userDeviceRepository.findByUserIdInAndDeletedAtIsNull(List.of(RECIPIENT_ID)))
         .thenReturn(List.of());
 
-    pushService.sendPushForNewMessage(message, SENDER_ID, CONVERSATION_ID);
+    pushService.executeSendPush(message.getMessageId(), SENDER_ID, CONVERSATION_ID);
 
     verify(firebaseMessaging, never()).sendEachForMulticast(any());
   }
@@ -179,6 +186,7 @@ class PushNotificationServiceImplTest {
     Message message = buildMessage("Hello");
     UserDevice device = buildDevice(RECIPIENT_ID, "token-expired");
 
+    when(messageRepository.findById(message.getMessageId())).thenReturn(Optional.of(message));
     when(participantRepository.findAllByConversationId(CONVERSATION_ID))
         .thenReturn(List.of(buildParticipant(SENDER_ID, false), buildParticipant(RECIPIENT_ID, false)));
     when(userDeviceRepository.findByUserIdInAndDeletedAtIsNull(List.of(RECIPIENT_ID)))
@@ -197,7 +205,7 @@ class PushNotificationServiceImplTest {
     when(batchResponse.getResponses()).thenReturn(List.of(failResponse));
     when(firebaseMessaging.sendEachForMulticast(any(MulticastMessage.class))).thenReturn(batchResponse);
 
-    pushService.sendPushForNewMessage(message, SENDER_ID, CONVERSATION_ID);
+    pushService.executeSendPush(message.getMessageId(), SENDER_ID, CONVERSATION_ID);
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<UserDevice>> saveCaptor = ArgumentCaptor.forClass(List.class);
@@ -214,6 +222,7 @@ class PushNotificationServiceImplTest {
     String longContent = "A".repeat(200);
     Message message = buildMessage(longContent);
 
+    when(messageRepository.findById(message.getMessageId())).thenReturn(Optional.of(message));
     when(participantRepository.findAllByConversationId(CONVERSATION_ID))
         .thenReturn(List.of(buildParticipant(SENDER_ID, false), buildParticipant(RECIPIENT_ID, false)));
     when(userDeviceRepository.findByUserIdInAndDeletedAtIsNull(List.of(RECIPIENT_ID)))
@@ -228,13 +237,12 @@ class PushNotificationServiceImplTest {
     when(batchResponse.getResponses()).thenReturn(List.of(successResp));
     when(firebaseMessaging.sendEachForMulticast(any(MulticastMessage.class))).thenReturn(batchResponse);
 
-    pushService.sendPushForNewMessage(message, SENDER_ID, CONVERSATION_ID);
+    pushService.executeSendPush(message.getMessageId(), SENDER_ID, CONVERSATION_ID);
 
     ArgumentCaptor<MulticastMessage> captor = ArgumentCaptor.forClass(MulticastMessage.class);
     verify(firebaseMessaging).sendEachForMulticast(captor.capture());
 
     MulticastMessage captured = captor.getValue();
-    // Access notification via reflection to verify body truncation
     Field notifField = MulticastMessage.class.getDeclaredField("notification");
     notifField.setAccessible(true);
     com.google.firebase.messaging.Notification notification =
@@ -260,7 +268,7 @@ class PushNotificationServiceImplTest {
     when(batchResponse.getResponses()).thenReturn(List.of(successResp));
     when(firebaseMessaging.sendEachForMulticast(any(MulticastMessage.class))).thenReturn(batchResponse);
 
-    pushService.sendPushForNewMessage(message, SENDER_ID, CONVERSATION_ID);
+    pushService.executeSendPush(message.getMessageId(), SENDER_ID, CONVERSATION_ID);
 
     ArgumentCaptor<MulticastMessage> captor = ArgumentCaptor.forClass(MulticastMessage.class);
     verify(firebaseMessaging).sendEachForMulticast(captor.capture());
@@ -284,7 +292,7 @@ class PushNotificationServiceImplTest {
     firebaseAppStatic.when(FirebaseApp::getApps).thenReturn(List.of());
     Message message = buildMessage("Hello");
 
-    pushService.sendPushForNewMessage(message, SENDER_ID, CONVERSATION_ID);
+    pushService.executeSendPush(message.getMessageId(), SENDER_ID, CONVERSATION_ID);
 
     verify(participantRepository, never()).findAllByConversationId(any());
   }
@@ -295,6 +303,7 @@ class PushNotificationServiceImplTest {
     Message message = buildMessage(null);
     message.setMessageType("IMAGE");
 
+    when(messageRepository.findById(message.getMessageId())).thenReturn(Optional.of(message));
     when(participantRepository.findAllByConversationId(CONVERSATION_ID))
         .thenReturn(List.of(buildParticipant(SENDER_ID, false), buildParticipant(RECIPIENT_ID, false)));
     when(userDeviceRepository.findByUserIdInAndDeletedAtIsNull(List.of(RECIPIENT_ID)))
@@ -309,7 +318,7 @@ class PushNotificationServiceImplTest {
     when(batchResponse.getResponses()).thenReturn(List.of(sr));
     when(firebaseMessaging.sendEachForMulticast(any(MulticastMessage.class))).thenReturn(batchResponse);
 
-    pushService.sendPushForNewMessage(message, SENDER_ID, CONVERSATION_ID);
+    pushService.executeSendPush(message.getMessageId(), SENDER_ID, CONVERSATION_ID);
 
     ArgumentCaptor<MulticastMessage> captor = ArgumentCaptor.forClass(MulticastMessage.class);
     verify(firebaseMessaging).sendEachForMulticast(captor.capture());
@@ -336,10 +345,8 @@ class PushNotificationServiceImplTest {
     when(firebaseMessaging.sendEachForMulticast(any(MulticastMessage.class)))
         .thenThrow(new RuntimeException("FCM unavailable"));
 
-    // Should not throw
-    pushService.sendPushForNewMessage(message, SENDER_ID, CONVERSATION_ID);
+    pushService.executeSendPush(message.getMessageId(), SENDER_ID, CONVERSATION_ID);
 
-    // No exception propagated — verify the call was attempted
     verify(firebaseMessaging).sendEachForMulticast(any(MulticastMessage.class));
   }
 
@@ -349,6 +356,7 @@ class PushNotificationServiceImplTest {
     String content100 = "B".repeat(100);
     Message message = buildMessage(content100);
 
+    when(messageRepository.findById(message.getMessageId())).thenReturn(Optional.of(message));
     when(participantRepository.findAllByConversationId(CONVERSATION_ID))
         .thenReturn(List.of(buildParticipant(SENDER_ID, false), buildParticipant(RECIPIENT_ID, false)));
     when(userDeviceRepository.findByUserIdInAndDeletedAtIsNull(List.of(RECIPIENT_ID)))
@@ -363,7 +371,7 @@ class PushNotificationServiceImplTest {
     when(batchResponse.getResponses()).thenReturn(List.of(sr));
     when(firebaseMessaging.sendEachForMulticast(any(MulticastMessage.class))).thenReturn(batchResponse);
 
-    pushService.sendPushForNewMessage(message, SENDER_ID, CONVERSATION_ID);
+    pushService.executeSendPush(message.getMessageId(), SENDER_ID, CONVERSATION_ID);
 
     ArgumentCaptor<MulticastMessage> captor = ArgumentCaptor.forClass(MulticastMessage.class);
     verify(firebaseMessaging).sendEachForMulticast(captor.capture());

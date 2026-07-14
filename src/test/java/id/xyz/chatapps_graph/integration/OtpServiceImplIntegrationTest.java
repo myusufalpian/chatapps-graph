@@ -23,14 +23,14 @@ import org.springframework.test.context.ActiveProfiles;
 class OtpServiceImplIntegrationTest extends RedisIntegrationBase {
 
   @Autowired private OtpService otpService;
-  @Autowired private StringRedisTemplate redisTemplate;
+  @Autowired private StringRedisTemplate stringRedisTemplate;
 
   private static final String PHONE = "+628123456789";
 
   @BeforeEach
   void flush() {
-    assertNotNull(redisTemplate.getConnectionFactory());
-    redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
+    assertNotNull(stringRedisTemplate.getConnectionFactory());
+    stringRedisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
   }
 
   // --- generateAndSaveOtp ---
@@ -40,7 +40,7 @@ class OtpServiceImplIntegrationTest extends RedisIntegrationBase {
   void generateAndSaveOtp_StoresInRedis() {
     String otp = otpService.generateAndSaveOtp(PHONE, OtpPurpose.SIGN_IN);
 
-    String stored = redisTemplate.opsForValue().get("otp:sign_in:" + PHONE);
+    String stored = stringRedisTemplate.opsForValue().get("otp:sign_in:" + PHONE);
     assertEquals(otp, stored);
   }
 
@@ -58,7 +58,7 @@ class OtpServiceImplIntegrationTest extends RedisIntegrationBase {
   void generateAndSaveOtp_HasTtl() {
     otpService.generateAndSaveOtp(PHONE, OtpPurpose.SIGN_IN);
 
-    Long ttl = redisTemplate.getExpire("otp:sign_in:" + PHONE);
+    Long ttl = stringRedisTemplate.getExpire("otp:sign_in:" + PHONE);
     assertNotNull(ttl);
     assertTrue(ttl > 0 && ttl <= 60, "TTL should be between 1 and 60 seconds, was: " + ttl);
   }
@@ -69,8 +69,8 @@ class OtpServiceImplIntegrationTest extends RedisIntegrationBase {
     String signInOtp = otpService.generateAndSaveOtp(PHONE, OtpPurpose.SIGN_IN);
     String mfaOtp = otpService.generateAndSaveOtp(PHONE, OtpPurpose.MFA);
 
-    assertEquals(signInOtp, redisTemplate.opsForValue().get("otp:sign_in:" + PHONE));
-    assertEquals(mfaOtp, redisTemplate.opsForValue().get("otp:mfa:" + PHONE));
+    assertEquals(signInOtp, stringRedisTemplate.opsForValue().get("otp:sign_in:" + PHONE));
+    assertEquals(mfaOtp, stringRedisTemplate.opsForValue().get("otp:mfa:" + PHONE));
   }
 
   @Test
@@ -79,7 +79,7 @@ class OtpServiceImplIntegrationTest extends RedisIntegrationBase {
     otpService.generateAndSaveOtp(PHONE, OtpPurpose.SIGN_IN);
     otpService.generateAndSaveOtp(PHONE, OtpPurpose.SIGN_IN);
 
-    String count = redisTemplate.opsForValue().get("otp:" + PHONE + ":req_count");
+    String count = stringRedisTemplate.opsForValue().get("otp:" + PHONE + ":req_count");
     assertEquals("2", count);
   }
 
@@ -89,11 +89,11 @@ class OtpServiceImplIntegrationTest extends RedisIntegrationBase {
     // Simulate a failed validation to create attempt key
     otpService.generateAndSaveOtp(PHONE, OtpPurpose.SIGN_IN);
     otpService.validateOtp(PHONE, "wrong!", OtpPurpose.SIGN_IN);
-    assertNotNull(redisTemplate.opsForValue().get("otp:sign_in:" + PHONE + ":attempts"));
+    assertNotNull(stringRedisTemplate.opsForValue().get("otp:sign_in:" + PHONE + ":attempts"));
 
     // Generate new OTP should clear attempts
     otpService.generateAndSaveOtp(PHONE, OtpPurpose.SIGN_IN);
-    assertNull(redisTemplate.opsForValue().get("otp:sign_in:" + PHONE + ":attempts"));
+    assertNull(stringRedisTemplate.opsForValue().get("otp:sign_in:" + PHONE + ":attempts"));
   }
 
   // --- validateOtp ---
@@ -106,7 +106,7 @@ class OtpServiceImplIntegrationTest extends RedisIntegrationBase {
     boolean result = otpService.validateOtp(PHONE, otp, OtpPurpose.SIGN_IN);
 
     assertTrue(result);
-    assertNull(redisTemplate.opsForValue().get("otp:sign_in:" + PHONE));
+    assertNull(stringRedisTemplate.opsForValue().get("otp:sign_in:" + PHONE));
   }
 
   @Test
@@ -117,7 +117,7 @@ class OtpServiceImplIntegrationTest extends RedisIntegrationBase {
     boolean result = otpService.validateOtp(PHONE, "wrong!", OtpPurpose.SIGN_IN);
 
     assertFalse(result);
-    String attempts = redisTemplate.opsForValue().get("otp:sign_in:" + PHONE + ":attempts");
+    String attempts = stringRedisTemplate.opsForValue().get("otp:sign_in:" + PHONE + ":attempts");
     assertEquals("1", attempts);
   }
 
@@ -133,8 +133,8 @@ class OtpServiceImplIntegrationTest extends RedisIntegrationBase {
 
     assertFalse(thirdAttempt);
     // Both keys should be deleted
-    assertNull(redisTemplate.opsForValue().get("otp:sign_in:" + PHONE));
-    assertNull(redisTemplate.opsForValue().get("otp:sign_in:" + PHONE + ":attempts"));
+    assertNull(stringRedisTemplate.opsForValue().get("otp:sign_in:" + PHONE));
+    assertNull(stringRedisTemplate.opsForValue().get("otp:sign_in:" + PHONE + ":attempts"));
 
     // Even correct OTP should fail now
     assertFalse(otpService.validateOtp(PHONE, otp, OtpPurpose.SIGN_IN));

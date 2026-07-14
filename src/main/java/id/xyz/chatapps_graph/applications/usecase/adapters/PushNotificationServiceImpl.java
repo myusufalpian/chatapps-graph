@@ -15,8 +15,12 @@ import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.entity.UserDevice;
 import id.xyz.chatapps_graph.domain.repository.ConversationParticipantRepository;
 import id.xyz.chatapps_graph.domain.repository.ConversationRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageRepository;
 import id.xyz.chatapps_graph.domain.repository.UserDeviceRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
+import id.xyz.chatapps_graph.framework.dto.FCMNotificationTask;
+import id.xyz.chatapps_graph.infrastructure.config.rabbitmq.RabbitMQConfig;
+import id.xyz.chatapps_graph.infrastructure.mapper.MessageMapper;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -24,9 +28,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
+
 
 @Slf4j
 @Service
@@ -39,15 +43,36 @@ public class PushNotificationServiceImpl implements PushNotificationService {
   private final UserDeviceRepository userDeviceRepository;
   private final UserRepository userRepository;
   private final ConversationRepository conversationRepository;
+  private final MessageRepository messageRepository;
+  private final RabbitTemplate rabbitTemplate;
 
-  @Async
   @Override
   public void sendPushForNewMessage(Message message, Long senderId, Long conversationId) {
+    FCMNotificationTask task = FCMNotificationTask.builder()
+        .messageId(message.getMessageId())
+        .senderId(senderId)
+        .conversationId(conversationId)
+        .build();
+    
+    rabbitTemplate.convertAndSend(
+        RabbitMQConfig.CHAT_TASK_EXCHANGE,
+        RabbitMQConfig.FCM_NOTIFICATIONS_ROUTING_KEY,
+        task
+    );
+  }
+
+  public void executeSendPush(Long messageId, Long senderId, Long conversationId) {
     if (FirebaseApp.getApps().isEmpty()) {
       return;
     }
 
     try {
+      Message message = messageRepository.findById(messageId).orElse(null);
+      if (message == null) {
+        log.warn("FCM Notification failed: Message not found for ID {}", messageId);
+        return;
+      }
+
       List<ConversationParticipant> participants = participantRepository.findAllByConversationId(conversationId);
 
       List<Long> targetUserIds = participants.stream()
@@ -77,8 +102,7 @@ public class PushNotificationServiceImpl implements PushNotificationService {
       String conversationUuid = conversation != null ? conversation.getConversationUuid() : "";
 
       MulticastMessage fcmMessage = MulticastMessage.builder()
-          .setNotification(Notification.builder
-                  ()
+          .setNotification(Notification.builder()
               .setTitle(senderName)
               .setBody(preview)
               .build())
@@ -93,7 +117,7 @@ public class PushNotificationServiceImpl implements PushNotificationService {
       handleUnregisteredTokens(response, tokens, tokenToDevice);
 
     } catch (Exception e) {
-      log.error("Failed to send push notification: {}", e.getMessage());
+      log.error("Failed to send push notification", e);
     }
   }
 
@@ -119,9 +143,7 @@ public class PushNotificationServiceImpl implements PushNotificationService {
   }
 
   private String buildPreview(String content, String messageType) {
-    if (!StringUtils.hasLength(content)) {
-      return messageType != null ? messageType : "New message";
-    }
-    return content.length() <= MAX_PREVIEW_LENGTH ? content : content.substring(0, MAX_PREVIEW_LENGTH);
+    return MessageMapper.buildPreview(content, messageType, MAX_PREVIEW_LENGTH);
   }
 }
+

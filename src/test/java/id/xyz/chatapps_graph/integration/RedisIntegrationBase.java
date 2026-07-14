@@ -4,15 +4,15 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-@Testcontainers
 public abstract class RedisIntegrationBase {
 
-  @Container
   static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine")
       .withExposedPorts(6379);
+
+  static {
+    REDIS.start();
+  }
 
   @DynamicPropertySource
   static void redisProperties(DynamicPropertyRegistry registry) {
