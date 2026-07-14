@@ -13,12 +13,16 @@ import static org.mockito.Mockito.when;
 
 import id.xyz.chatapps_graph.applications.service.FileStoragePort;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
+import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
+import id.xyz.chatapps_graph.domain.repository.UserRepository;
+import id.xyz.chatapps_graph.infrastructure.config.properties.MediaProperties;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.utility.ImageProcessingService;
 import id.xyz.chatapps_graph.infrastructure.utility.VideoThumbnailService;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +35,7 @@ class AttachmentServiceImplTest {
 
   @Mock private FileStoragePort fileStoragePort;
   @Mock private AttachmentRepository attachmentRepository;
+  @Mock private UserRepository userRepository;
   @Mock private MultipartFile multipartFile;
   @Mock private ImageProcessingService imageProcessingService;
   @Mock private VideoThumbnailService videoThumbnailService;
@@ -42,11 +47,17 @@ class AttachmentServiceImplTest {
 
   @org.junit.jupiter.api.BeforeEach
   void setUp() throws Exception {
-    id.xyz.chatapps_graph.infrastructure.config.properties.MediaProperties props =
-        new id.xyz.chatapps_graph.infrastructure.config.properties.MediaProperties();
+    MediaProperties props = new MediaProperties();
     props.setMaxFileSize(15L * 1024 * 1024);
+    MediaProperties.ImageProperties imgProps = new MediaProperties.ImageProperties();
+    imgProps.setMaxDimension(1920);
+    imgProps.setQuality(85);
+    imgProps.setThumbnailDimension(200);
+    imgProps.setThumbnailQuality(60);
+    props.setImage(imgProps);
+
     attachmentService = new AttachmentServiceImpl(
-        fileStoragePort, attachmentRepository, props, imageProcessingService, videoThumbnailService);
+        fileStoragePort, attachmentRepository, props, imageProcessingService, videoThumbnailService, userRepository);
   }
 
   private void setupFile(String contentType, String originalName, long size) throws Exception {
@@ -56,17 +67,26 @@ class AttachmentServiceImplTest {
     org.mockito.Mockito.lenient().when(multipartFile.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
   }
 
+  private void mockUserLookup() {
+    User user = User.builder()
+        .userId(UPLOADER_ID)
+        .userUuid(UPLOADER_UUID)
+        .build();
+    when(userRepository.findById(UPLOADER_ID)).thenReturn(Optional.of(user));
+  }
+
   @Test
   @DisplayName("upload IMAGE: valid jpeg — succeeds and saves attachment")
   void upload_Image_ValidJpeg_Succeeds() throws Exception {
+    mockUserLookup();
     setupFile("image/jpeg", "photo.jpg", 1024L);
     when(multipartFile.getBytes()).thenReturn(new byte[]{1, 2, 3});
     when(imageProcessingService.compressAndThumbnail(any(InputStream.class), eq(1920), eq(85f), eq(200), eq(60f)))
             .thenReturn(new id.xyz.chatapps_graph.infrastructure.utility.ImageProcessingService.ImageProcessingResult(new byte[]{10, 20}, new byte[]{30, 40}));
-    // thumbnail handled by compressAndThumbnail;
+    
     when(attachmentRepository.save(any(Attachment.class))).thenAnswer(inv -> inv.getArgument(0));
 
-    Attachment result = attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID, UPLOADER_UUID);
+    Attachment result = attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID);
 
     assertNotNull(result);
     assertEquals("photo.jpg", result.getFileName());
@@ -83,7 +103,7 @@ class AttachmentServiceImplTest {
     when(multipartFile.getContentType()).thenReturn("application/pdf");
 
     GeneralException ex = assertThrows(GeneralException.class,
-        () -> attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID, UPLOADER_UUID));
+        () -> attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID));
 
     assertEquals(400, ex.getHttpCode());
     assertEquals("INVALID_CONTENT_TYPE", ex.getKey());
@@ -92,10 +112,11 @@ class AttachmentServiceImplTest {
   @Test
   @DisplayName("upload VOICE: ogg format — succeeds")
   void upload_Voice_OggFormat_Succeeds() throws Exception {
+    mockUserLookup();
     setupFile("audio/ogg", "voice.ogg", 2048L);
     when(attachmentRepository.save(any(Attachment.class))).thenAnswer(inv -> inv.getArgument(0));
 
-    Attachment result = attachmentService.validateAndUpload(multipartFile, "VOICE", UPLOADER_ID, UPLOADER_UUID);
+    Attachment result = attachmentService.validateAndUpload(multipartFile, "VOICE", UPLOADER_ID);
 
     assertEquals("VOICE", result.getAttachmentType());
     assertEquals("audio/ogg", result.getContentType());
@@ -105,10 +126,11 @@ class AttachmentServiceImplTest {
   @Test
   @DisplayName("upload FILE: any content type — succeeds (no restriction)")
   void upload_File_AnyType_Succeeds() throws Exception {
+    mockUserLookup();
     setupFile("application/x-custom", "data.bin", 500L);
     when(attachmentRepository.save(any(Attachment.class))).thenAnswer(inv -> inv.getArgument(0));
 
-    Attachment result = attachmentService.validateAndUpload(multipartFile, "FILE", UPLOADER_ID, UPLOADER_UUID);
+    Attachment result = attachmentService.validateAndUpload(multipartFile, "FILE", UPLOADER_ID);
 
     assertEquals("FILE", result.getAttachmentType());
     assertEquals("application/x-custom", result.getContentType());
@@ -117,18 +139,19 @@ class AttachmentServiceImplTest {
   @Test
   @DisplayName("upload: Minio path contains timestamp and uploader UUID")
   void upload_MinioPath_ContainsTimestamp() throws Exception {
+    mockUserLookup();
     setupFile("image/png", "img.png", 100L);
     when(multipartFile.getBytes()).thenReturn(new byte[]{1});
     when(imageProcessingService.compressAndThumbnail(any(InputStream.class), eq(1920), eq(85f), eq(200), eq(60f)))
             .thenReturn(new id.xyz.chatapps_graph.infrastructure.utility.ImageProcessingService.ImageProcessingResult(new byte[]{1}, new byte[]{30, 40}));
-    // thumbnail handled by compressAndThumbnail;
+    
     when(attachmentRepository.save(any(Attachment.class))).thenAnswer(inv -> inv.getArgument(0));
 
-    Attachment result = attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID, UPLOADER_UUID);
+    Attachment result = attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID);
 
     assertTrue(result.getFilePath().startsWith("chat/" + UPLOADER_UUID + "/"));
     assertTrue(result.getFilePath().contains("_img.png"));
-    // Check there's a numeric timestamp between the uuid and filename
+    
     String pathAfterPrefix = result.getFilePath().replace("chat/" + UPLOADER_UUID + "/", "");
     String timestampPart = pathAfterPrefix.split("_")[0];
     assertTrue(timestampPart.matches("\\d+"));

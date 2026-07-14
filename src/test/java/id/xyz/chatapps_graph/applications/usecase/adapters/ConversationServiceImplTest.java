@@ -28,8 +28,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import id.xyz.chatapps_graph.applications.usecase.WebSocketBroadcastService;
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+
+import id.xyz.chatapps_graph.framework.dto.MultiChatResponse;
+import id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.StatusConstants;
+import java.util.List;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 class ConversationServiceImplTest {
@@ -39,9 +45,10 @@ class ConversationServiceImplTest {
   @Mock private GroupMemberRepository groupMemberRepository;
   @Mock private UserRepository userRepository;
   @Mock private SystemMessageService systemMessageService;
-  @Mock private SimpMessagingTemplate messagingTemplate;
+  @Mock private WebSocketBroadcastService broadcastService;
 
   @InjectMocks private ConversationServiceImpl conversationService;
+
 
   private static final Long USER_A = 1L;
   private static final Long USER_B = 2L;
@@ -144,7 +151,7 @@ class ConversationServiceImplTest {
     Conversation result = conversationService.updateDisappearingTtl(CONVERSATION_UUID, USER_A, 24);
 
     assertEquals(24, result.getDisappearingTtl());
-    verify(messagingTemplate).convertAndSend(
+    verify(broadcastService).broadcast(
         eq("/topic/chat/" + CONVERSATION_UUID + "/settings"),
         eq(Map.of("type", "DISAPPEARING_CHANGED", "ttl", "24h"))
     );
@@ -198,6 +205,80 @@ class ConversationServiceImplTest {
 
     assertEquals(HttpStatus.FORBIDDEN.value(), ex.getHttpCode());
     assertEquals("Not a participant", ex.getMessage());
+  }
+
+  @Test
+  @DisplayName("findConversationById: existing conversation — returns it")
+  void findConversationById_Existing_ReturnsIt() {
+    Conversation conv = new Conversation();
+    conv.setConversationId(CONVERSATION_ID);
+    when(conversationRepository.findById(CONVERSATION_ID)).thenReturn(Optional.of(conv));
+
+    Conversation result = conversationService.findConversationById(CONVERSATION_ID);
+
+    assertNotNull(result);
+    assertEquals(CONVERSATION_ID, result.getConversationId());
+  }
+
+  @Test
+  @DisplayName("findConversationById: conversation not found — throws NotFound")
+  void findConversationById_NotFound_ThrowsNotFound() {
+    when(conversationRepository.findById(CONVERSATION_ID)).thenReturn(Optional.empty());
+
+    GeneralException ex = assertThrows(GeneralException.class, () ->
+        conversationService.findConversationById(CONVERSATION_ID)
+    );
+
+    assertEquals(HttpStatus.NOT_FOUND.value(), ex.getHttpCode());
+    assertEquals("CONVERSATION_NOT_FOUND", ex.getKey());
+  }
+
+  @Test
+  @DisplayName("createMultiChatByUuids: succeeds and returns MultiChatResponse")
+  void createMultiChatByUuids_Succeeds() {
+    User uB = new User();
+    uB.setUserId(USER_B);
+    uB.setUserUuid("uuid-B");
+    uB.setUserFullName("User B");
+
+    User uC = new User();
+    uC.setUserId(3L);
+    uC.setUserUuid("uuid-C");
+    uC.setUserFullName("User C");
+
+    User uA = new User();
+    uA.setUserId(USER_A);
+    uA.setUserUuid("uuid-A");
+    uA.setUserFullName("User A");
+
+    when(userRepository.findUserByUserUuidAndUserStatus("uuid-B", StatusConstants.ACTIVE)).thenReturn(Optional.of(uB));
+    when(userRepository.findUserByUserUuidAndUserStatus("uuid-C", StatusConstants.ACTIVE)).thenReturn(Optional.of(uC));
+
+    Conversation conversation = new Conversation();
+    conversation.setConversationId(10L);
+    conversation.setConversationUuid("conv-uuid");
+    conversation.setConversationType("MULTI_CHAT");
+    when(conversationRepository.save(any(Conversation.class))).thenReturn(conversation);
+
+    when(userRepository.findAllById(any())).thenReturn(List.of(uA, uB, uC));
+
+    MultiChatResponse response = conversationService.createMultiChatByUuids(USER_A, List.of("uuid-B", "uuid-C"));
+
+    assertNotNull(response);
+    assertEquals("conv-uuid", response.conversationUuid());
+  }
+
+  @Test
+  @DisplayName("createMultiChatByUuids: user not found — throws NotFound")
+  void createMultiChatByUuids_UserNotFound_ThrowsNotFound() {
+    when(userRepository.findUserByUserUuidAndUserStatus("uuid-B", StatusConstants.ACTIVE)).thenReturn(Optional.empty());
+
+    GeneralException ex = assertThrows(GeneralException.class, () ->
+        conversationService.createMultiChatByUuids(USER_A, List.of("uuid-B", "uuid-C"))
+    );
+
+    assertEquals(HttpStatus.NOT_FOUND.value(), ex.getHttpCode());
+    assertEquals("USER_NOT_FOUND", ex.getKey());
   }
 }
 

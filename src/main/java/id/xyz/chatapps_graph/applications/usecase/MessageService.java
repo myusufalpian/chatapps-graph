@@ -1,11 +1,13 @@
 package id.xyz.chatapps_graph.applications.usecase;
 
 import id.xyz.chatapps_graph.domain.entity.Message;
+import id.xyz.chatapps_graph.framework.dto.MessageReactionResult;
+import id.xyz.chatapps_graph.framework.dto.SendMessageResult;
 import java.util.List;
 
 public interface MessageService {
 
-  Message sendMessage(Long senderId, String recipientUuid, String conversationUuid,
+  SendMessageResult sendMessage(Long senderId, String recipientUuid, String conversationUuid,
       String messageType, String content, Long attachmentId, String replyToMessageUuid);
 
   List<Message> listMessages(Long conversationId, Long userId, String cursor, int limit);
@@ -18,11 +20,14 @@ public interface MessageService {
 
   Message forwardMessage(Long userId, String messageUuid, String targetConversationUuid);
 
-  void addReaction(Long userId, Long messageId, String emoji);
+  MessageReactionResult addReaction(Long userId, String messageUuid, String emoji);
 
-  void removeReaction(Long userId, Long messageId);
+  MessageReactionResult removeReaction(Long userId, String messageUuid);
 
   List<Message> searchMessages(Long userId, String query, String conversationUuid, String cursor, int limit);
 
   MessageEditResult editMessage(Long userId, String messageUuid, String newContent);
+
+  String resolveUserUuid(Long userId);
 }
+

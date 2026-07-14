@@ -3,14 +3,12 @@ package id.xyz.chatapps_graph.framework.controller;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
 import id.xyz.chatapps_graph.applications.usecase.MessageService;
 import id.xyz.chatapps_graph.domain.entity.Conversation;
-import id.xyz.chatapps_graph.domain.entity.Message;
-import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.enums.MessageType;
 import id.xyz.chatapps_graph.domain.enums.ReceiptStatus;
-import id.xyz.chatapps_graph.domain.repository.UserRepository;
 import id.xyz.chatapps_graph.framework.dto.DeliveryReceiptEvent;
 import id.xyz.chatapps_graph.framework.dto.DeliveryReceiptRequest;
 import id.xyz.chatapps_graph.framework.dto.MessageResponse;
+import id.xyz.chatapps_graph.framework.dto.SendMessageResult;
 import id.xyz.chatapps_graph.framework.dto.TypingEvent;
 import id.xyz.chatapps_graph.framework.dto.TypingRequest;
 import id.xyz.chatapps_graph.framework.dto.WebSocketSendMessage;
@@ -19,9 +17,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import id.xyz.chatapps_graph.applications.usecase.WebSocketBroadcastService;
 import org.springframework.stereotype.Controller;
-import org.springframework.util.StringUtils;
 
 @Controller
 @RequiredArgsConstructor
@@ -29,8 +26,7 @@ public class ChatWebSocketHandler {
 
   private final MessageService messageService;
   private final ConversationService conversationService;
-  private final UserRepository userRepository;
-  private final SimpMessagingTemplate messagingTemplate;
+  private final WebSocketBroadcastService broadcastService;
 
   @MessageMapping("/chat/send")
   public void handleSendMessage(
@@ -40,33 +36,22 @@ public class ChatWebSocketHandler {
       return;
     }
 
-    Message message = messageService.sendMessage(userId, payload.recipientUuid(),
+    SendMessageResult result = messageService.sendMessage(userId, payload.recipientUuid(),
         payload.conversationUuid(), MessageType.TEXT.name(), payload.content(),
         null, payload.replyToMessageUuid());
 
-    User sender = userRepository.findById(userId).orElse(null);
-    String senderUuid = sender != null ? sender.getUserUuid() : null;
-
-    Conversation conv;
-    if (payload.conversationUuid() != null) {
-      conv = conversationService.findConversationByUuid(payload.conversationUuid());
-    } else {
-      User recipient = userRepository.findUserByUserUuidAndUserStatus(payload.recipientUuid(), 0).orElse(null);
-      conv = conversationService.findOrCreatePrivateConversation(userId, recipient != null ? recipient.getUserId() : 0L);
-    }
-
     MessageResponse response = MessageResponse.builder()
-        .messageUuid(message.getMessageUuid())
-        .conversationUuid(conv.getConversationUuid())
-        .senderUuid(senderUuid)
-        .messageType(message.getMessageType())
-        .content(message.getContent())
-        .status(message.getMessageStatus())
+        .messageUuid(result.message().getMessageUuid())
+        .conversationUuid(result.conversationUuid())
+        .senderUuid(result.senderUuid())
+        .messageType(result.message().getMessageType())
+        .content(result.message().getContent())
+        .status(result.message().getMessageStatus())
         .deliveryStatus(ReceiptStatus.SENT.getValue())
-        .createdAt(message.getCreatedAt())
+        .createdAt(result.message().getCreatedAt())
         .build();
 
-    messagingTemplate.convertAndSend("/topic/chat/" + conv.getConversationUuid(), response);
+    broadcastService.broadcast("/topic/chat/" + result.conversationUuid(), response);
   }
 
   @MessageMapping("/chat/delivered")
@@ -87,14 +72,11 @@ public class ChatWebSocketHandler {
       return;
     }
 
-    User reader = userRepository.findById(userId).orElse(null);
     DeliveryReceiptEvent event = new DeliveryReceiptEvent("MESSAGE_DELIVERED", request.conversationUuid(),
-        request.messageUuids(), reader != null ? reader.getUserUuid() : null, "DELIVERED");
+        request.messageUuids(), result.readerUuid(), "DELIVERED");
 
-    userRepository.findAllById(result.senderIds()).stream()
-        .filter(sender -> StringUtils.hasLength(sender.getUserPhone()))
-        .forEach(sender -> messagingTemplate.convertAndSendToUser(sender.getUserPhone(),
-            "/queue/chat/receipts", event));
+    result.targetUserPhones().forEach(phone ->
+        broadcastService.sendToUser(phone, "/queue/chat/receipts", event));
   }
 
   @MessageMapping("/chat/typing")
@@ -110,8 +92,7 @@ public class ChatWebSocketHandler {
       return;
     }
 
-    User sender = userRepository.findById(userId).orElse(null);
-    String userUuid = sender != null ? sender.getUserUuid() : null;
+    String userUuid = messageService.resolveUserUuid(userId);
 
     TypingEvent event = TypingEvent.builder()
         .conversationUuid(request.conversationUuid())
@@ -119,7 +100,7 @@ public class ChatWebSocketHandler {
         .isTyping(true)
         .build();
 
-    messagingTemplate.convertAndSend("/topic/chat/" + request.conversationUuid() + "/typing", event);
+    broadcastService.broadcast("/topic/chat/" + request.conversationUuid() + "/typing", event);
   }
 
   /**

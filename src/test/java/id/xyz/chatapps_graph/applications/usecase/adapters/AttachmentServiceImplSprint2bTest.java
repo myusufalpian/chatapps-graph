@@ -16,7 +16,9 @@ import static org.mockito.Mockito.when;
 
 import id.xyz.chatapps_graph.applications.service.FileStoragePort;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
+import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
+import id.xyz.chatapps_graph.domain.repository.UserRepository;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.config.properties.MediaProperties;
 import id.xyz.chatapps_graph.infrastructure.utility.ImageProcessingService;
@@ -26,6 +28,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.Optional;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -42,17 +45,17 @@ class AttachmentServiceImplSprint2bTest {
   @Mock private AttachmentRepository attachmentRepository;
   @Mock private ImageProcessingService imageProcessingService;
   @Mock private VideoThumbnailService videoThumbnailService;
+  @Mock private UserRepository userRepository;
   @Mock private MultipartFile multipartFile;
 
   private AttachmentServiceImpl attachmentService;
-  private MediaProperties mediaProperties;
 
   private static final Long UPLOADER_ID = 1L;
   private static final String UPLOADER_UUID = "user-uuid-123";
 
   @BeforeEach
   void setUp() {
-    mediaProperties = new MediaProperties();
+    MediaProperties mediaProperties = new MediaProperties();
     mediaProperties.setMaxFileSize(20971520L);
     MediaProperties.ImageProperties imgProps = new MediaProperties.ImageProperties();
     imgProps.setMaxDimension(1920);
@@ -62,7 +65,7 @@ class AttachmentServiceImplSprint2bTest {
     mediaProperties.setImage(imgProps);
 
     attachmentService = new AttachmentServiceImpl(
-        fileStoragePort, attachmentRepository, mediaProperties, imageProcessingService, videoThumbnailService);
+        fileStoragePort, attachmentRepository, mediaProperties, imageProcessingService, videoThumbnailService, userRepository);
   }
 
   private byte[] createTestImageBytes() throws IOException {
@@ -72,9 +75,18 @@ class AttachmentServiceImplSprint2bTest {
     return baos.toByteArray();
   }
 
+  private void mockUserLookup() {
+    User user = User.builder()
+        .userId(UPLOADER_ID)
+        .userUuid(UPLOADER_UUID)
+        .build();
+    when(userRepository.findById(UPLOADER_ID)).thenReturn(Optional.of(user));
+  }
+
   @Test
   @DisplayName("uploadImage: compresses and generates thumbnail")
   void uploadImage_CompressesAndGeneratesThumbnail() throws Exception {
+    mockUserLookup();
     byte[] rawBytes = createTestImageBytes();
     byte[] compressed = new byte[]{1, 2, 3};
     byte[] thumbnail = new byte[]{4, 5, 6};
@@ -85,12 +97,11 @@ class AttachmentServiceImplSprint2bTest {
     when(multipartFile.getBytes()).thenReturn(rawBytes);
     when(imageProcessingService.compressAndThumbnail(any(InputStream.class), eq(1920), eq(85f), eq(200), eq(60f)))
             .thenReturn(new id.xyz.chatapps_graph.infrastructure.utility.ImageProcessingService.ImageProcessingResult(compressed, thumbnail));
-    // thumbnail handled by compressAndThumbnail;
+    
     when(attachmentRepository.save(any(Attachment.class))).thenAnswer(inv -> inv.getArgument(0));
 
-    Attachment result = attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID, UPLOADER_UUID);
+    Attachment result = attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID);
 
-    // Compressed uploaded to main path + thumbnail uploaded
     verify(fileStoragePort, times(2)).uploadFile(anyString(), any(InputStream.class), eq("image/jpeg"), anyLong());
     assertNotNull(result.getThumbnailPath());
     assertTrue(result.getThumbnailPath().startsWith("thumbnails/"));
@@ -102,7 +113,7 @@ class AttachmentServiceImplSprint2bTest {
     when(multipartFile.getSize()).thenReturn(30_000_000L);
 
     GeneralException ex = assertThrows(GeneralException.class,
-        () -> attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID, UPLOADER_UUID));
+        () -> attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID));
 
     assertEquals(413, ex.getHttpCode());
     assertEquals("FILE_TOO_LARGE", ex.getKey());
@@ -112,6 +123,7 @@ class AttachmentServiceImplSprint2bTest {
   @Test
   @DisplayName("uploadVideo: ffmpeg available — generates thumbnail")
   void uploadVideo_FfmpegAvailable_GeneratesThumbnail() throws Exception {
+    mockUserLookup();
     byte[] thumbnail = new byte[]{7, 8, 9};
     when(multipartFile.getContentType()).thenReturn("video/mp4");
     when(multipartFile.getOriginalFilename()).thenReturn("video.mp4");
@@ -120,7 +132,7 @@ class AttachmentServiceImplSprint2bTest {
     when(videoThumbnailService.extractFirstFrame(any(Path.class), eq(200))).thenReturn(thumbnail);
     when(attachmentRepository.save(any(Attachment.class))).thenAnswer(inv -> inv.getArgument(0));
 
-    Attachment result = attachmentService.validateAndUpload(multipartFile, "VIDEO", UPLOADER_ID, UPLOADER_UUID);
+    Attachment result = attachmentService.validateAndUpload(multipartFile, "VIDEO", UPLOADER_ID);
 
     assertNotNull(result.getThumbnailPath());
     assertTrue(result.getThumbnailPath().contains("_thumb.jpg"));
@@ -129,6 +141,7 @@ class AttachmentServiceImplSprint2bTest {
   @Test
   @DisplayName("uploadVideo: ffmpeg unavailable — thumbnail null")
   void uploadVideo_FfmpegUnavailable_ThumbnailNull() throws Exception {
+    mockUserLookup();
     when(multipartFile.getContentType()).thenReturn("video/mp4");
     when(multipartFile.getOriginalFilename()).thenReturn("video.mp4");
     when(multipartFile.getSize()).thenReturn(5000L);
@@ -136,7 +149,7 @@ class AttachmentServiceImplSprint2bTest {
     when(videoThumbnailService.extractFirstFrame(any(Path.class), eq(200))).thenReturn(null);
     when(attachmentRepository.save(any(Attachment.class))).thenAnswer(inv -> inv.getArgument(0));
 
-    Attachment result = attachmentService.validateAndUpload(multipartFile, "VIDEO", UPLOADER_ID, UPLOADER_UUID);
+    Attachment result = attachmentService.validateAndUpload(multipartFile, "VIDEO", UPLOADER_ID);
 
     assertNull(result.getThumbnailPath());
   }
@@ -144,22 +157,23 @@ class AttachmentServiceImplSprint2bTest {
   @Test
   @DisplayName("uploadFile: non-image — no compression, no thumbnail")
   void uploadFile_NonImage_NoCompression() throws Exception {
+    mockUserLookup();
     when(multipartFile.getContentType()).thenReturn("application/pdf");
     when(multipartFile.getOriginalFilename()).thenReturn("doc.pdf");
     when(multipartFile.getSize()).thenReturn(1024L);
     when(multipartFile.getInputStream()).thenReturn(InputStream.nullInputStream());
     when(attachmentRepository.save(any(Attachment.class))).thenAnswer(inv -> inv.getArgument(0));
 
-    Attachment result = attachmentService.validateAndUpload(multipartFile, "FILE", UPLOADER_ID, UPLOADER_UUID);
+    Attachment result = attachmentService.validateAndUpload(multipartFile, "FILE", UPLOADER_ID);
 
     assertNull(result.getThumbnailPath());
     verify(imageProcessingService, never()).compressAndThumbnail(any(), eq(1920), eq(85f), eq(200), eq(60f));
-    // generateThumbnail no longer called directly — handled by compressAndThumbnail;
   }
 
   @Test
   @DisplayName("attachmentResponse: thumbnailUrl included when path exists")
   void attachmentResponse_IncludesThumbnailUrl() throws Exception {
+    mockUserLookup();
     byte[] rawBytes = createTestImageBytes();
     byte[] compressed = new byte[]{1, 2};
     byte[] thumbnail = new byte[]{3, 4};
@@ -170,12 +184,11 @@ class AttachmentServiceImplSprint2bTest {
     when(multipartFile.getBytes()).thenReturn(rawBytes);
     when(imageProcessingService.compressAndThumbnail(any(InputStream.class), eq(1920), eq(85f), eq(200), eq(60f)))
             .thenReturn(new id.xyz.chatapps_graph.infrastructure.utility.ImageProcessingService.ImageProcessingResult(compressed, thumbnail));
-    // thumbnail handled by compressAndThumbnail;
+    
     when(attachmentRepository.save(any(Attachment.class))).thenAnswer(inv -> inv.getArgument(0));
 
-    Attachment result = attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID, UPLOADER_UUID);
+    Attachment result = attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID);
 
-    // Verify the mapper produces correct response
     var response = id.xyz.chatapps_graph.infrastructure.mapper.AttachmentMapper.toResponse(result, "http://localhost:9000/test-bucket");
     assertNotNull(response.thumbnailUrl());
     assertTrue(response.thumbnailUrl().contains("thumbnails/"));
@@ -184,6 +197,7 @@ class AttachmentServiceImplSprint2bTest {
   @Test
   @DisplayName("uploadImage: IOException during processing — throws UPLOAD_FAILED")
   void uploadImage_IoException_ThrowsUploadFailed() throws Exception {
+    mockUserLookup();
     when(multipartFile.getContentType()).thenReturn("image/jpeg");
     when(multipartFile.getOriginalFilename()).thenReturn("photo.jpg");
     when(multipartFile.getSize()).thenReturn(1024L);
@@ -192,7 +206,7 @@ class AttachmentServiceImplSprint2bTest {
         .thenThrow(new IOException("Unable to decode image"));
 
     GeneralException ex = assertThrows(GeneralException.class,
-        () -> attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID, UPLOADER_UUID));
+        () -> attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID));
 
     assertEquals(500, ex.getHttpCode());
     assertEquals("UPLOAD_FAILED", ex.getKey());
@@ -206,7 +220,7 @@ class AttachmentServiceImplSprint2bTest {
     when(multipartFile.getContentType()).thenReturn("text/plain");
 
     GeneralException ex = assertThrows(GeneralException.class,
-        () -> attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID, UPLOADER_UUID));
+        () -> attachmentService.validateAndUpload(multipartFile, "IMAGE", UPLOADER_ID));
 
     assertEquals(400, ex.getHttpCode());
     assertEquals("INVALID_CONTENT_TYPE", ex.getKey());

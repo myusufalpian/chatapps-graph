@@ -22,14 +22,14 @@ import org.springframework.test.context.ActiveProfiles;
 class RateLimitServiceImplIntegrationTest extends RedisIntegrationBase {
 
   @Autowired private RateLimitService rateLimitService;
-  @Autowired private StringRedisTemplate redisTemplate;
+  @Autowired private StringRedisTemplate stringRedisTemplate;
 
   private static final String PHONE = "+628123456789";
   private static final String CLIENT_IP = "192.168.1.100";
 
   @BeforeEach
   void flush() {
-    redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
+    stringRedisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
   }
 
   // --- isIpRateLimited (sliding window) ---
@@ -80,7 +80,7 @@ class RateLimitServiceImplIntegrationTest extends RedisIntegrationBase {
   @DisplayName("isPhoneRateLimited: returns true when counter reaches max-count (3)")
   void isPhoneRateLimited_AtMaxCount_ReturnsTrue() {
     // Simulate counter being set (normally done by OtpService.generateAndSaveOtp)
-    redisTemplate.opsForValue().set("otp:" + PHONE + ":req_count", "3");
+    stringRedisTemplate.opsForValue().set("otp:" + PHONE + ":req_count", "3");
 
     assertTrue(rateLimitService.isPhoneRateLimited(PHONE));
   }
@@ -88,7 +88,7 @@ class RateLimitServiceImplIntegrationTest extends RedisIntegrationBase {
   @Test
   @DisplayName("isPhoneRateLimited: returns false when counter below max")
   void isPhoneRateLimited_BelowMax_ReturnsFalse() {
-    redisTemplate.opsForValue().set("otp:" + PHONE + ":req_count", "2");
+    stringRedisTemplate.opsForValue().set("otp:" + PHONE + ":req_count", "2");
 
     assertFalse(rateLimitService.isPhoneRateLimited(PHONE));
   }

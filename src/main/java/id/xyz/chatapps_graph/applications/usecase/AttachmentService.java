@@ -5,7 +5,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 public interface AttachmentService {
 
-  Attachment validateAndUpload(MultipartFile file, String attachmentType, Long uploaderId, String uploaderUuid);
+  Attachment validateAndUpload(MultipartFile file, String attachmentType, Long uploaderId);
 
   void deleteFile(String filePath);
 }

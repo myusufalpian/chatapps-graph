@@ -1,9 +1,8 @@
 package id.xyz.chatapps_graph.applications.usecase;
 
 import id.xyz.chatapps_graph.domain.entity.LinkPreview;
-import java.util.concurrent.CompletableFuture;
 
 public interface LinkPreviewService {
-
-  CompletableFuture<LinkPreview> fetchPreviewAsync(String url);
+  LinkPreview fetchPreview(String url);
+  void processLinkPreviewTask(Long messageId, String url, String conversationUuid);
 }

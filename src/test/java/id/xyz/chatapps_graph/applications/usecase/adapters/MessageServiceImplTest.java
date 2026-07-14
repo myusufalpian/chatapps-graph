@@ -3,6 +3,7 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,6 +12,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import id.xyz.chatapps_graph.domain.entity.User;
 
 import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
@@ -26,7 +29,7 @@ import id.xyz.chatapps_graph.applications.usecase.LinkPreviewService;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
 import id.xyz.chatapps_graph.domain.repository.MessageEditHistoryRepository;
 import id.xyz.chatapps_graph.infrastructure.config.properties.ChatEditProperties;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import id.xyz.chatapps_graph.domain.repository.ConversationParticipantRepository;
@@ -61,8 +64,9 @@ class MessageServiceImplTest {
   @Mock private MessageEditHistoryRepository editHistoryRepository;
   @Mock private ChatEditProperties chatEditProperties;
   @Mock private LinkPreviewService linkPreviewService;
-  @Mock private SimpMessagingTemplate messagingTemplate;
+  @Mock private RabbitTemplate rabbitTemplate;
   @Mock private PlatformTransactionManager transactionManager;
+
 
   @InjectMocks private MessageServiceImpl messageService;
 
@@ -115,10 +119,13 @@ class MessageServiceImplTest {
     when(participantRepository.findAllByConversationId(CONVERSATION_ID))
         .thenReturn(List.of(pSender, pRecipient));
 
-    Message result = messageService.sendMessage(SENDER_ID, null, CONVERSATION_UUID, "TEXT", "Hello", null, null);
+    User sender = User.builder().userId(SENDER_ID).userUuid("sender-uuid").build();
+    when(userRepository.findById(SENDER_ID)).thenReturn(Optional.of(sender));
+
+    id.xyz.chatapps_graph.framework.dto.SendMessageResult result = messageService.sendMessage(SENDER_ID, null, CONVERSATION_UUID, "TEXT", "Hello", null, null);
 
     assertNotNull(result);
-    assertEquals(100L, result.getMessageId());
+    assertEquals(100L, result.message().getMessageId());
 
     ArgumentCaptor<MessageReceipt> captor = ArgumentCaptor.forClass(MessageReceipt.class);
     verify(receiptRepository).save(captor.capture());
@@ -264,7 +271,7 @@ class MessageServiceImplTest {
   }
 
   @Test
-  @DisplayName("markAsDelivered: updates receipt rows and returns sender ids")
+  @DisplayName("markAsDelivered: updates receipt rows and returns target user phones")
   void markAsDelivered_UpdatesReceipts() {
     Conversation conversation = buildConversation();
     when(conversationService.findConversationByUuid(CONVERSATION_UUID)).thenReturn(conversation);
@@ -275,10 +282,16 @@ class MessageServiceImplTest {
         List.of("msg-1", "msg-2"), ReceiptStatus.SENT.getValue(), ReceiptStatus.DELIVERED.getValue()))
         .thenReturn(2);
 
+    User sender = User.builder().userId(7L).userPhone("sender-phone").build();
+    when(userRepository.findAllById(List.of(7L))).thenReturn(List.of(sender));
+    User reader = User.builder().userId(RECIPIENT_ID).userUuid("reader-uuid").build();
+    when(userRepository.findById(RECIPIENT_ID)).thenReturn(Optional.of(reader));
+
     var result = messageService.markAsDelivered(CONVERSATION_UUID, RECIPIENT_ID, List.of("msg-1", "msg-2"));
 
     assertTrue(result.receiptsUpdated());
-    assertEquals(List.of(7L), result.senderIds());
+    assertEquals(List.of("sender-phone"), result.targetUserPhones());
+    assertEquals("reader-uuid", result.readerUuid());
     verify(receiptRepository).markAsDeliveredByConversation(CONVERSATION_ID, RECIPIENT_ID,
         List.of("msg-1", "msg-2"), ReceiptStatus.SENT.getValue(), ReceiptStatus.DELIVERED.getValue());
   }
@@ -289,6 +302,7 @@ class MessageServiceImplTest {
     var result = messageService.markAsDelivered(CONVERSATION_UUID, RECIPIENT_ID, List.of());
 
     assertFalse(result.receiptsUpdated());
-    assertEquals(List.of(), result.senderIds());
+    assertEquals(List.of(), result.targetUserPhones());
+    assertNull(result.readerUuid());
   }
 }

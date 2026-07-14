@@ -3,6 +3,7 @@ package id.xyz.chatapps_graph.applications.usecase.adapters;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.refEq;
 import static org.mockito.Mockito.mock;
@@ -10,11 +11,15 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import id.xyz.chatapps_graph.applications.usecase.WebSocketBroadcastService;
 import id.xyz.chatapps_graph.domain.entity.LinkPreview;
+import id.xyz.chatapps_graph.domain.entity.Message;
 import id.xyz.chatapps_graph.domain.repository.LinkPreviewRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageRepository;
+import id.xyz.chatapps_graph.framework.dto.LinkPreviewResponse;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -26,60 +31,57 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 @ExtendWith(MockitoExtension.class)
 class LinkPreviewServiceImplTest {
 
   @Mock private LinkPreviewRepository repository;
+  @Mock private MessageRepository messageRepository;
+  @Mock private WebSocketBroadcastService broadcastService;
+  @Mock private PlatformTransactionManager transactionManager;
 
   @InjectMocks private LinkPreviewServiceImpl linkPreviewService;
 
   @Test
-  @DisplayName("fetchPreviewAsync: cache hit and not expired — returns cached")
-  void fetchPreviewAsync_CacheHit_ReturnsCached() throws Exception {
+  @DisplayName("fetchPreview: cache hit and not expired — returns cached")
+  void fetchPreview_CacheHit_ReturnsCached() throws Exception {
     String url = "https://google.com";
-    String hash = "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"; // sha256 of url is computed internally
+    String expectedHash = sha256(url);
     
     LinkPreview cached = LinkPreview.builder()
         .previewId(1L)
         .url(url)
-        .urlHash(hash)
+        .urlHash(expectedHash)
         .title("Google")
         .fetchedAt(LocalDateTime.now().minusHours(1))
         .build();
 
-    // Calculate the expected hash for this specific URL:
-    // "https://google.com" sha256:
-    // Let's use the exact hash that the service computes.
-    // The service computes hash of "https://google.com"
-    String expectedHash = sha256(url);
-
     when(repository.findByUrlHash(expectedHash)).thenReturn(Optional.of(cached));
 
-    CompletableFuture<LinkPreview> future = linkPreviewService.fetchPreviewAsync(url);
-    LinkPreview result = future.get();
+    LinkPreview result = linkPreviewService.fetchPreview(url);
 
     assertNotNull(result);
     assertEquals("Google", result.getTitle());
   }
 
   @Test
-  @DisplayName("fetchPreviewAsync: private IP — returns null without fetching")
-  void fetchPreviewAsync_PrivateIp_ReturnsNull() throws Exception {
+  @DisplayName("fetchPreview: private IP — returns null without fetching")
+  void fetchPreview_PrivateIp_ReturnsNull() throws Exception {
     String url = "http://127.0.0.1/admin";
     String expectedHash = sha256(url);
 
     when(repository.findByUrlHash(expectedHash)).thenReturn(Optional.empty());
 
-    CompletableFuture<LinkPreview> future = linkPreviewService.fetchPreviewAsync(url);
-    LinkPreview result = future.get();
+    LinkPreview result = linkPreviewService.fetchPreview(url);
 
     assertNull(result);
   }
 
   @Test
-  @DisplayName("fetchPreviewAsync: success path")
-  void fetchPreviewAsync_Success() throws Exception {
+  @DisplayName("fetchPreview: success path")
+  void fetchPreview_Success() throws Exception {
     String url = "https://example.com";
     String expectedHash = sha256(url);
 
@@ -95,7 +97,6 @@ class LinkPreviewServiceImplTest {
       when(connection.followRedirects(true)).thenReturn(connection);
       when(connection.get()).thenReturn(document);
 
-      // Setup document returns for title/meta tags
       when(document.select("meta[property=og:title]")).thenReturn(new Elements());
       when(document.select("meta[name=og:title]")).thenReturn(new Elements());
       when(document.title()).thenReturn("Example Title");
@@ -117,7 +118,6 @@ class LinkPreviewServiceImplTest {
           .title("Example Title")
           .build();
 
-      // We match the saved object using refEq to ignore fetchedAt which is dynamically generated using LocalDateTime.now()
       when(repository.save(refEq(LinkPreview.builder()
           .url(url)
           .urlHash(expectedHash)
@@ -125,12 +125,58 @@ class LinkPreviewServiceImplTest {
           .siteName("example.com")
           .build(), "fetchedAt"))).thenReturn(saved);
 
-      CompletableFuture<LinkPreview> future = linkPreviewService.fetchPreviewAsync(url);
-      LinkPreview result = future.get();
+      LinkPreview result = linkPreviewService.fetchPreview(url);
 
       assertNotNull(result);
       assertEquals("Example Title", result.getTitle());
     }
+  }
+
+  @Test
+  @DisplayName("processLinkPreviewTask: success path updates message and broadcasts WebSocket")
+  void processLinkPreviewTask_Success() throws Exception {
+    String url = "https://google.com";
+    String expectedHash = sha256(url);
+    Long messageId = 100L;
+    String conversationUuid = "conv-123";
+
+    LinkPreview cached = LinkPreview.builder()
+        .previewId(1L)
+        .url(url)
+        .urlHash(expectedHash)
+        .title("Google")
+        .fetchedAt(LocalDateTime.now().minusHours(1))
+        .build();
+
+    when(repository.findByUrlHash(expectedHash)).thenReturn(Optional.of(cached));
+    
+    TransactionStatus transactionStatus = mock(TransactionStatus.class);
+    when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
+
+
+
+    Message message = new Message();
+    message.setMessageId(messageId);
+    message.setMessageUuid("msg-456");
+    when(messageRepository.findById(messageId)).thenReturn(Optional.of(message));
+
+    linkPreviewService.processLinkPreviewTask(messageId, url, conversationUuid);
+
+    verify(messageRepository).save(refEq(message));
+    
+    LinkPreviewResponse previewResponse = LinkPreviewResponse.builder()
+        .url(url)
+        .title("Google")
+        .build();
+
+    verify(broadcastService).broadcast(
+        eq("/topic/chat/" + conversationUuid),
+        eq(Map.of(
+            "type", "LINK_PREVIEW_READY",
+            "messageUuid", "msg-456",
+            "preview", previewResponse
+        ))
+    );
   }
 
   private String sha256(String input) {

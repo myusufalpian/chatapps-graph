@@ -15,6 +15,7 @@ import id.xyz.chatapps_graph.applications.usecase.AttachmentService;
 import id.xyz.chatapps_graph.applications.usecase.ConversationService;
 import id.xyz.chatapps_graph.applications.usecase.PushNotificationService;
 import id.xyz.chatapps_graph.applications.usecase.RateLimitService;
+import id.xyz.chatapps_graph.domain.entity.Conversation;
 import id.xyz.chatapps_graph.domain.entity.Message;
 import id.xyz.chatapps_graph.domain.entity.MessageEditHistory;
 import id.xyz.chatapps_graph.domain.entity.User;
@@ -29,6 +30,7 @@ import id.xyz.chatapps_graph.domain.repository.UserRepository;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.config.properties.ChatEditProperties;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -59,20 +61,33 @@ class MessageEditServiceTest {
   @InjectMocks private MessageServiceImpl messageService;
 
   private static final Long USER_ID = 1L;
+  private static final String USER_UUID = "user-uuid-1";
   private static final Long OTHER_USER_ID = 2L;
   private static final String MESSAGE_UUID = "msg-uuid-edit-test";
+  private static final Long CONVERSATION_ID = 10L;
+  private static final String CONVERSATION_UUID = "conv-uuid-10";
 
   private Message buildActiveMessage(Long senderId, OffsetDateTime createdAt) {
     Message m = new Message();
     m.setMessageId(100L);
     m.setMessageUuid(MESSAGE_UUID);
-    m.setConversationId(10L);
+    m.setConversationId(CONVERSATION_ID);
     m.setSenderId(senderId);
     m.setMessageType("TEXT");
     m.setContent("Original content");
     m.setMessageStatus(MessageStatus.ACTIVE.getValue());
     m.setCreatedAt(createdAt);
     return m;
+  }
+
+  private void mockUserAndConversationLookup() {
+    Conversation conv = Conversation.builder()
+        .conversationId(CONVERSATION_ID)
+        .conversationUuid(CONVERSATION_UUID)
+        .build();
+    when(conversationService.findConversationById(CONVERSATION_ID)).thenReturn(conv);
+    User user = User.builder().userId(USER_ID).userUuid(USER_UUID).build();
+    when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
   }
 
   @Nested
@@ -85,6 +100,7 @@ class MessageEditServiceTest {
       Message message = buildActiveMessage(USER_ID, OffsetDateTime.now().minusMinutes(5));
       when(messageRepository.findByMessageUuid(MESSAGE_UUID)).thenReturn(Optional.of(message));
       when(chatEditProperties.getMaxWindowMinutes()).thenReturn(30);
+      mockUserAndConversationLookup();
       when(editHistoryRepository.save(any(MessageEditHistory.class)))
           .thenAnswer(inv -> inv.getArgument(0));
       when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -101,6 +117,7 @@ class MessageEditServiceTest {
       Message message = buildActiveMessage(USER_ID, OffsetDateTime.now().minusMinutes(10));
       when(messageRepository.findByMessageUuid(MESSAGE_UUID)).thenReturn(Optional.of(message));
       when(chatEditProperties.getMaxWindowMinutes()).thenReturn(30);
+      mockUserAndConversationLookup();
       when(editHistoryRepository.save(any(MessageEditHistory.class)))
           .thenAnswer(inv -> inv.getArgument(0));
       when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -121,6 +138,7 @@ class MessageEditServiceTest {
       Message message = buildActiveMessage(USER_ID, OffsetDateTime.now().minusMinutes(1));
       when(messageRepository.findByMessageUuid(MESSAGE_UUID)).thenReturn(Optional.of(message));
       when(chatEditProperties.getMaxWindowMinutes()).thenReturn(30);
+      mockUserAndConversationLookup();
       when(editHistoryRepository.save(any(MessageEditHistory.class)))
           .thenAnswer(inv -> inv.getArgument(0));
       when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -128,7 +146,6 @@ class MessageEditServiceTest {
       Message result = messageService.editMessage(USER_ID, MESSAGE_UUID, "Edited").message();
 
       assertNotNull(result.getEditedAt());
-      // editedAt should be same timestamp as history's editedAt
       ArgumentCaptor<MessageEditHistory> histCaptor = ArgumentCaptor.forClass(MessageEditHistory.class);
       verify(editHistoryRepository).save(histCaptor.capture());
       assertEquals(result.getEditedAt(), histCaptor.getValue().getEditedAt());
@@ -140,6 +157,7 @@ class MessageEditServiceTest {
       Message message = buildActiveMessage(USER_ID, OffsetDateTime.now().minusMinutes(2));
       when(messageRepository.findByMessageUuid(MESSAGE_UUID)).thenReturn(Optional.of(message));
       when(chatEditProperties.getMaxWindowMinutes()).thenReturn(30);
+      mockUserAndConversationLookup();
       when(editHistoryRepository.save(any(MessageEditHistory.class)))
           .thenAnswer(inv -> inv.getArgument(0));
       when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -164,6 +182,7 @@ class MessageEditServiceTest {
       Message message = buildActiveMessage(USER_ID, OffsetDateTime.now().minusMinutes(2));
       when(messageRepository.findByMessageUuid(MESSAGE_UUID)).thenReturn(Optional.of(message));
       when(chatEditProperties.getMaxWindowMinutes()).thenReturn(30);
+      mockUserAndConversationLookup();
 
       var result = messageService.editMessage(USER_ID, MESSAGE_UUID, "Original content");
 
@@ -237,10 +256,10 @@ class MessageEditServiceTest {
     @Test
     @DisplayName("edit at exact 30 min boundary: still allowed (createdAt + 30 > now)")
     void editMessage_ExactBoundary_StillAllowed() {
-      // Created exactly 29 minutes 59 seconds ago — should still pass
       Message message = buildActiveMessage(USER_ID, OffsetDateTime.now().minusMinutes(29).minusSeconds(59));
       when(messageRepository.findByMessageUuid(MESSAGE_UUID)).thenReturn(Optional.of(message));
       when(chatEditProperties.getMaxWindowMinutes()).thenReturn(30);
+      mockUserAndConversationLookup();
       when(editHistoryRepository.save(any(MessageEditHistory.class)))
           .thenAnswer(inv -> inv.getArgument(0));
       when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -261,8 +280,8 @@ class MessageEditServiceTest {
           .thenReturn(buildConversation());
     }
 
-    private id.xyz.chatapps_graph.domain.entity.Conversation buildConversation() {
-      var c = new id.xyz.chatapps_graph.domain.entity.Conversation();
+    private Conversation buildConversation() {
+      var c = new Conversation();
       c.setConversationId(10L);
       c.setConversationUuid("conv-uuid");
       return c;
@@ -271,15 +290,19 @@ class MessageEditServiceTest {
     @Test
     @DisplayName("hideReadReceipt=false: updates receipt to READ and returns true")
     void markAsRead_HideFalse_NormalBehavior() {
-      User reader = User.builder().userId(USER_ID).hideReadReceipt(false).build();
+      User reader = User.builder().userId(USER_ID).hideReadReceipt(false).userUuid(USER_UUID).build();
       when(userRepository.findById(USER_ID)).thenReturn(Optional.of(reader));
-      when(receiptRepository.findUnreadMessageSenderIds(10L, USER_ID, 2)).thenReturn(java.util.List.of(7L));
+      when(receiptRepository.findUnreadMessageSenderIds(10L, USER_ID, 2)).thenReturn(List.of(7L));
       when(receiptRepository.markAsReadByConversation(10L, USER_ID, 2)).thenReturn(1);
+
+      User sender = User.builder().userId(7L).userPhone("sender-phone").build();
+      when(userRepository.findAllById(List.of(7L))).thenReturn(List.of(sender));
 
       var result = messageService.markAsRead("conv-uuid", USER_ID);
 
       assertTrue(result.receiptsUpdated());
-      assertEquals(java.util.List.of(7L), result.senderIds());
+      assertEquals(List.of("sender-phone"), result.targetUserPhones());
+      assertEquals(USER_UUID, result.readerUuid());
       verify(receiptRepository).markAsReadByConversation(eq(10L), eq(USER_ID), eq(2));
       verify(participantRepository).resetUnreadCount(10L, USER_ID);
     }

@@ -3,6 +3,7 @@ package id.xyz.chatapps_graph.framework.mapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import id.xyz.chatapps_graph.domain.entity.Attachment;
+import id.xyz.chatapps_graph.domain.entity.Conversation;
 import id.xyz.chatapps_graph.domain.entity.LinkPreview;
 import id.xyz.chatapps_graph.domain.entity.Message;
 import id.xyz.chatapps_graph.domain.entity.MessageReaction;
@@ -10,6 +11,12 @@ import id.xyz.chatapps_graph.domain.entity.MessageReceipt;
 import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.framework.dto.LinkPreviewResponse;
 
+import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
+import id.xyz.chatapps_graph.domain.repository.ConversationRepository;
+import id.xyz.chatapps_graph.domain.repository.LinkPreviewRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageReactionRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageReceiptRepository;
+import id.xyz.chatapps_graph.domain.repository.MessageRepository;
 import id.xyz.chatapps_graph.domain.enums.MessageType;
 import id.xyz.chatapps_graph.domain.enums.ReceiptStatus;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
@@ -17,6 +24,7 @@ import id.xyz.chatapps_graph.framework.dto.ForwardedInfo;
 import id.xyz.chatapps_graph.framework.dto.MessageResponse;
 import id.xyz.chatapps_graph.framework.dto.ReactionSummary;
 import id.xyz.chatapps_graph.framework.dto.ReplyToResponse;
+import id.xyz.chatapps_graph.framework.dto.SearchResultItem;
 import id.xyz.chatapps_graph.infrastructure.config.properties.MinioProperties;
 import id.xyz.chatapps_graph.infrastructure.mapper.AttachmentMapper;
 import id.xyz.chatapps_graph.infrastructure.mapper.MessageMapper;
@@ -25,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -44,6 +53,92 @@ public class MessageResponseMapper {
   private final TranslationService translationService;
   private final UserRepository userRepository;
   private final ObjectMapper objectMapper;
+  private final AttachmentRepository attachmentRepository;
+  private final MessageRepository messageRepository;
+  private final MessageReactionRepository reactionRepository;
+  private final MessageReceiptRepository receiptRepository;
+  private final LinkPreviewRepository linkPreviewRepository;
+  private final ConversationRepository conversationRepository;
+
+  /**
+   * Batch-maps a list of messages into {@link MessageResponse} DTOs. All related entities
+   * (users, attachments, replies, reactions, receipts, previews, forwarded originals) are
+   * fetched in bulk to avoid N+1 queries.
+   */
+  public List<MessageResponse> toResponseList(
+      List<Message> messages, String conversationUuid, Long requestUserId, String locale) {
+    if (messages.isEmpty()) {
+      return List.of();
+    }
+
+    Map<Long, User> userMap = userRepository.findAllById(
+        messages.stream().map(Message::getSenderId).distinct().toList()
+    ).stream().collect(Collectors.toMap(User::getUserId, Function.identity()));
+
+    User requester = userRepository.findById(requestUserId).orElse(null);
+    boolean hideReadReceipt = requester != null && Boolean.TRUE.equals(requester.getHideReadReceipt());
+
+    Map<Long, Attachment> attachmentMap = loadLinkedEntities(
+        messages, Message::getAttachmentId, attachmentRepository::findAllById, Attachment::getAttachmentId);
+    Map<Long, Message> replyMap = loadLinkedEntities(
+        messages, Message::getReplyToMessageId, messageRepository::findAllById, Message::getMessageId);
+    Map<Long, Message> forwardMap = loadLinkedEntities(
+        messages, Message::getForwardedFromId, messageRepository::findAllById, Message::getMessageId);
+
+    List<Long> messageIds = messages.stream().map(Message::getMessageId).toList();
+    Map<Long, List<MessageReaction>> reactionsByMessage = reactionRepository.findAllByMessageIdIn(messageIds)
+        .stream().collect(Collectors.groupingBy(MessageReaction::getMessageId));
+
+    Map<Long, List<MessageReceipt>> receiptsByMessage = receiptRepository.findAllByMessageIdIn(
+        messageIds.stream().distinct().toList()
+    ).stream().collect(Collectors.groupingBy(MessageReceipt::getMessageId));
+
+    List<Long> previewIds = messages.stream().map(Message::getPreviewId)
+        .filter(Objects::nonNull).distinct().toList();
+    Map<Long, LinkPreview> previewMap = previewIds.isEmpty() ? Map.of()
+        : linkPreviewRepository.findAllById(previewIds).stream()
+            .collect(Collectors.toMap(LinkPreview::getPreviewId, Function.identity()));
+
+    Map<String, User> userByUuidMap = userMap.values().stream()
+        .collect(Collectors.toMap(User::getUserUuid, Function.identity(), (a, b) -> a));
+
+    return messages.stream()
+        .map(m -> toResponse(m, conversationUuid, userMap, userByUuidMap,
+            attachmentMap, replyMap, reactionsByMessage, forwardMap, receiptsByMessage,
+            previewMap, requestUserId, locale, hideReadReceipt))
+        .toList();
+  }
+
+  /**
+   * Maps search-result messages into {@link SearchResultItem} DTOs with sender and
+   * conversation UUID resolution done in bulk.
+   */
+  public List<SearchResultItem> toSearchResultItemList(List<Message> messages) {
+    if (messages.isEmpty()) {
+      return List.of();
+    }
+
+    Map<Long, User> userMap = userRepository.findAllById(
+        messages.stream().map(Message::getSenderId).distinct().toList()
+    ).stream().collect(Collectors.toMap(User::getUserId, Function.identity()));
+
+    Map<Long, Conversation> convMap = conversationRepository.findAllById(
+        messages.stream().map(Message::getConversationId).distinct().toList()
+    ).stream().collect(Collectors.toMap(Conversation::getConversationId, Function.identity()));
+
+    return messages.stream()
+        .map(m -> SearchResultItem.builder()
+            .messageUuid(m.getMessageUuid())
+            .conversationUuid(convMap.containsKey(m.getConversationId())
+                ? convMap.get(m.getConversationId()).getConversationUuid() : null)
+            .senderUuid(userMap.containsKey(m.getSenderId())
+                ? userMap.get(m.getSenderId()).getUserUuid() : null)
+            .content(m.getContent())
+            .messageType(m.getMessageType())
+            .createdAt(m.getCreatedAt())
+            .build())
+        .toList();
+  }
 
   /**
    * Maps a single {@link Message} to a {@link MessageResponse}.
@@ -215,5 +310,32 @@ public class MessageResponseMapper {
       return content;
     }
 
+  }
+
+  /**
+   * Generic helper for loading linked entities from a list of messages.
+   *
+   * @param messages    the source messages
+   * @param idExtractor function to extract the foreign-key ID from a Message
+   * @param fetcher     function to fetch entities by a list of IDs
+   * @param keyMapper   function to extract the map key from the fetched entity
+   * @param <T>         the entity type
+   * @return a map from entity-key to entity, or empty map if no IDs found
+   */
+  private <T> Map<Long, T> loadLinkedEntities(
+      List<Message> messages,
+      Function<Message, Long> idExtractor,
+      Function<List<Long>, List<T>> fetcher,
+      Function<T, Long> keyMapper) {
+    List<Long> ids = messages.stream()
+        .map(idExtractor)
+        .filter(Objects::nonNull)
+        .distinct()
+        .toList();
+    if (ids.isEmpty()) {
+      return Map.of();
+    }
+    return fetcher.apply(ids).stream()
+        .collect(Collectors.toMap(keyMapper, Function.identity()));
   }
 }

@@ -58,4 +58,11 @@ public class MessageMapper {
     }
     return new ReplyToResponse(replyMessage.getMessageUuid(), replySenderUuid, replyMessage.getContent());
   }
+
+  public static String buildPreview(String content, String messageType, int maxLength) {
+    if (content == null || content.isEmpty()) {
+      return messageType != null ? messageType : "New message";
+    }
+    return content.length() <= maxLength ? content : content.substring(0, maxLength);
+  }
 }
