@@ -7,8 +7,12 @@ import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.GetObjectArgs;
+import io.minio.GetPresignedObjectUrlArgs;
+import io.minio.http.Method;
 import io.minio.RemoveObjectArgs;
 import java.io.InputStream;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -66,6 +70,32 @@ public class MinioService implements FileStoragePort {
       );
     } catch (Exception e) {
       log.error("Failed to delete file from Minio: {}", fileName, e);
+    }
+  }
+
+  @Override
+  public InputStream downloadFile(String fileName) {
+    try {
+      return minioClient.getObject(GetObjectArgs.builder()
+          .bucket(bucketName).object(fileName).build());
+    } catch (Exception e) {
+      throw ExceptionUtil.error(ErrorKeyConstants.INTERNAL_SERVER_ERROR,
+          String.format(ErrorKeyConstants.STORAGE_ERROR, e.getMessage()),
+          HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
+    }
+  }
+
+  @Override
+  public String createPresignedUrl(String fileName, Duration expiry) {
+    try {
+      return minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+          .method(Method.GET).bucket(bucketName).object(fileName)
+          .expiry((int) expiry.toSeconds(), java.util.concurrent.TimeUnit.SECONDS)
+          .build());
+    } catch (Exception e) {
+      throw ExceptionUtil.error(ErrorKeyConstants.INTERNAL_SERVER_ERROR,
+          String.format(ErrorKeyConstants.STORAGE_ERROR, e.getMessage()),
+          HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
     }
   }
 }

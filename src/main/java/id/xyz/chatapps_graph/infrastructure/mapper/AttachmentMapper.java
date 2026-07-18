@@ -23,7 +23,14 @@ public class AttachmentMapper {
         attachment.getFileSize(),
         attachment.getContentType(),
         attachment.getAttachmentType(),
-        thumbnailUrl
+        thumbnailUrl,
+        attachment.getVoiceDurationMs(),
+        attachment.getVoiceWaveform(),
+        attachment.getVoiceCodec(),
+        attachment.getVoiceBitrate(),
+        attachment.getVoiceSampleRate(),
+        attachment.getVoiceChannelCount(),
+        attachment.getMetadataStatus()
     );
   }
 }

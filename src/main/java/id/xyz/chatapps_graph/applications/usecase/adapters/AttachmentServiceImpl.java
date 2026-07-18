@@ -7,6 +7,8 @@ import id.xyz.chatapps_graph.domain.entity.User;
 import id.xyz.chatapps_graph.domain.enums.AttachmentType;
 import id.xyz.chatapps_graph.domain.repository.AttachmentRepository;
 import id.xyz.chatapps_graph.domain.repository.UserRepository;
+import id.xyz.chatapps_graph.framework.dto.VoiceMetadataTask;
+import id.xyz.chatapps_graph.infrastructure.config.rabbitmq.RabbitMQConfig;
 import id.xyz.chatapps_graph.infrastructure.config.exception.GeneralException;
 import id.xyz.chatapps_graph.infrastructure.config.properties.MediaProperties;
 import id.xyz.chatapps_graph.infrastructure.utility.ImageProcessingService;
@@ -21,10 +23,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AttachmentServiceImpl implements AttachmentService {
 
   private final FileStoragePort fileStoragePort;
@@ -33,6 +36,28 @@ public class AttachmentServiceImpl implements AttachmentService {
   private final ImageProcessingService imageProcessingService;
   private final VideoThumbnailService videoThumbnailService;
   private final UserRepository userRepository;
+  private final RabbitTemplate rabbitTemplate;
+
+  @Autowired
+  public AttachmentServiceImpl(FileStoragePort fileStoragePort, AttachmentRepository attachmentRepository,
+      MediaProperties mediaProperties, ImageProcessingService imageProcessingService,
+      VideoThumbnailService videoThumbnailService, UserRepository userRepository,
+      RabbitTemplate rabbitTemplate) {
+    this.fileStoragePort = fileStoragePort;
+    this.attachmentRepository = attachmentRepository;
+    this.mediaProperties = mediaProperties;
+    this.imageProcessingService = imageProcessingService;
+    this.videoThumbnailService = videoThumbnailService;
+    this.userRepository = userRepository;
+    this.rabbitTemplate = rabbitTemplate;
+  }
+
+  public AttachmentServiceImpl(FileStoragePort fileStoragePort, AttachmentRepository attachmentRepository,
+      MediaProperties mediaProperties, ImageProcessingService imageProcessingService,
+      VideoThumbnailService videoThumbnailService, UserRepository userRepository) {
+    this(fileStoragePort, attachmentRepository, mediaProperties, imageProcessingService,
+        videoThumbnailService, userRepository, null);
+  }
 
   @Override
   public Attachment validateAndUpload(MultipartFile file, String attachmentType, Long uploaderId) {
@@ -79,15 +104,21 @@ public class AttachmentServiceImpl implements AttachmentService {
       throw new GeneralException(HttpStatus.INTERNAL_SERVER_ERROR.value(), "UPLOAD_FAILED", "Failed to process and upload file");
     }
 
-    return attachmentRepository.save(Attachment.builder()
+    Attachment attachment = attachmentRepository.save(Attachment.builder()
         .uploaderId(uploaderId)
         .fileName(originalFilename)
         .filePath(filePath)
         .fileSize(file.getSize())
         .contentType(file.getContentType())
         .attachmentType(attachmentType)
+        .metadataStatus(type == AttachmentType.VOICE ? "PENDING" : "COMPLETED")
         .thumbnailPath(thumbnailPath)
         .build());
+    if (type == AttachmentType.VOICE && rabbitTemplate != null) {
+      rabbitTemplate.convertAndSend(RabbitMQConfig.CHAT_TASK_EXCHANGE,
+          RabbitMQConfig.VOICE_METADATA_ROUTING_KEY, VoiceMetadataTask.create(attachment.getAttachmentId()));
+    }
+    return attachment;
   }
 
   @Override
