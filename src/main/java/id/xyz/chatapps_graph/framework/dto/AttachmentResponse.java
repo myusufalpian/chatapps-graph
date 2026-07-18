@@ -12,5 +12,18 @@ public record AttachmentResponse(
     Long fileSize,
     String contentType,
     String attachmentType,
-    String thumbnailUrl
-) {}
+    String thumbnailUrl,
+    Long voiceDurationMs,
+    String voiceWaveform,
+    String voiceCodec,
+    Integer voiceBitrate,
+    Integer voiceSampleRate,
+    Short voiceChannelCount,
+    String metadataStatus
+) {
+  public AttachmentResponse(String attachmentUuid, String fileName, String filePath, Long fileSize,
+      String contentType, String attachmentType, String thumbnailUrl) {
+    this(attachmentUuid, fileName, filePath, fileSize, contentType, attachmentType, thumbnailUrl,
+        null, null, null, null, null, null, null);
+  }
+}

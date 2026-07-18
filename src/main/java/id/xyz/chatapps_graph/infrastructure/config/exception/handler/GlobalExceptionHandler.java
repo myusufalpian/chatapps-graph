@@ -24,6 +24,8 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import id.xyz.chatapps_graph.infrastructure.monitoring.MetricsFacade;
+
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @Slf4j
@@ -31,14 +33,18 @@ public class GlobalExceptionHandler {
 
   private final TranslationService translationService;
   private final LocaleResolver localeResolver;
+  private final MetricsFacade metricsFacade;
 
-  public GlobalExceptionHandler(TranslationService translationService, LocaleResolver localeResolver) {
+  public GlobalExceptionHandler(TranslationService translationService, LocaleResolver localeResolver, MetricsFacade metricsFacade) {
     this.translationService = translationService;
     this.localeResolver = localeResolver;
+    this.metricsFacade = metricsFacade;
   }
 
   @ExceptionHandler(GeneralException.class)
   public ResponseEntity<ErrorResponse> handleGeneralException(GeneralException exc, HttpServletRequest request) {
+    metricsFacade.incrementErrors(exc.getClass().getSimpleName());
+
     String locale = localeResolver.resolve(request);
     String translatedMessage = exc.getKey() != null
         ? translationService.translateError(exc.getKey(), locale)
@@ -55,6 +61,7 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ErrorResponse> handleGeneralException(Exception exc, HttpServletRequest request) {
+    metricsFacade.incrementErrors(exc.getClass().getSimpleName());
     log.error("Unhandled exception: ", exc);
     String locale = localeResolver.resolve(request);
     String translatedMessage = translationService.translateError(ErrorConstants.INTERNAL_SERVER_ERROR, locale);
@@ -70,6 +77,7 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)
   public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatchException(
       MethodArgumentTypeMismatchException exc, HttpServletRequest request) {
+    metricsFacade.incrementErrors(exc.getClass().getSimpleName());
     ErrorData error = new BaseErrorData(
         ErrorConstants.BAD_REQUEST,
         translationService.translateError(ErrorConstants.BAD_REQUEST, localeResolver.resolve(request)),
@@ -82,6 +90,7 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<ErrorResponse> handleMethodArgumentNotValidException(
       MethodArgumentNotValidException exc, HttpServletRequest request) {
+    metricsFacade.incrementErrors(exc.getClass().getSimpleName());
     List<ValidationData> validationDataList = new ArrayList<>();
     for (FieldError fieldError : exc.getBindingResult().getFieldErrors()) {
       validationDataList.add(new ValidationData(fieldError.getField(), fieldError.getDefaultMessage()));
@@ -92,6 +101,7 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(ConstraintViolationException.class)
   public ResponseEntity<ErrorResponse> handleConstraintViolationException(
       ConstraintViolationException exc, HttpServletRequest request) {
+    metricsFacade.incrementErrors(exc.getClass().getSimpleName());
     List<ValidationData> validationDataList = new ArrayList<>();
     for (ConstraintViolation<?> violation : exc.getConstraintViolations()) {
       validationDataList.add(new ValidationData(

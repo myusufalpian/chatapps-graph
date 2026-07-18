@@ -42,8 +42,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import id.xyz.chatapps_graph.framework.dto.LinkPreviewTask;
 import id.xyz.chatapps_graph.infrastructure.config.rabbitmq.RabbitMQConfig;
+import id.xyz.chatapps_graph.infrastructure.monitoring.MetricsFacade;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+
 
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -67,6 +69,7 @@ public class MessageServiceImpl implements MessageService {
   private final PushNotificationService pushNotificationService;
   private final MessageEditHistoryRepository editHistoryRepository;
   private final ChatEditProperties chatEditProperties;
+  private final MetricsFacade metricsFacade;
   private final RabbitTemplate rabbitTemplate;
 
   @Override
@@ -95,6 +98,8 @@ public class MessageServiceImpl implements MessageService {
           .build());
 
       createReceipts(message.getMessageId(), conversation.getConversationId(), senderId);
+      metricsFacade.incrementMessagesSent(conversation.getConversationType());
+
 
       // Update denormalized fields
       String preview = truncatePreview(content, messageType);
