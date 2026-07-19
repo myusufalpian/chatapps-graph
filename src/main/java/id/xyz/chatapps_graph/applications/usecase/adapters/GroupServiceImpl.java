@@ -225,7 +225,7 @@ public class GroupServiceImpl implements GroupService {
 
     String actorUuid = actorMember.getUser().getUserUuid();
     systemMessageService.create(group.getConversationId(), actorId, "AVATAR_CHANGED", actorUuid, null);
-    return buildFullUrl(avatarPath);
+    return minioProperties.buildUrl(avatarPath);
   }
 
   @Override
@@ -311,25 +311,10 @@ public class GroupServiceImpl implements GroupService {
     List<GroupMember> members = groupMemberRepository.findAllByGroupIdWithUser(group.getGroupId(), 1);
 
     List<GroupMemberResponse> memberResponses = members.stream()
-        .map(m -> {
-          User user = m.getUser();
-          return GroupMemberResponse.builder()
-              .userUuid(user.getUserUuid())
-              .fullName(user.getUserFullName())
-              .profilePhoto(user.getProfilePhoto())
-              .role(m.getMemberType())
-              .build();
-        })
+        .map(id.xyz.chatapps_graph.infrastructure.mapper.GroupMapper::toMemberResponse)
         .toList();
 
-    return GroupInfoResponse.builder()
-        .groupUuid(group.getGroupUuid())
-        .name(group.getGroupName())
-        .description(group.getGroupDesc())
-        .avatarUrl(group.getAvatarPath() != null ? buildFullUrl(group.getAvatarPath()) : null)
-        .allowMemberAdd(group.getAllowMemberAdd())
-        .members(memberResponses)
-        .build();
+    return id.xyz.chatapps_graph.infrastructure.mapper.GroupMapper.toInfoResponse(group, memberResponses, minioProperties.buildUrl(group.getAvatarPath()));
   }
 
   // --- Permission helpers ---
@@ -424,9 +409,6 @@ public class GroupServiceImpl implements GroupService {
     }
   }
 
-  private String buildFullUrl(String path) {
-    return minioProperties.getEndpoint() + "/" + minioProperties.getBucket() + "/" + path;
-  }
 
   private GeneralException businessException(HttpStatus status, String key, String message) {
     return new GeneralException(status.value(), key, message);

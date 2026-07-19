@@ -32,11 +32,10 @@ class RedisChatEventListenerTest {
 
     ChatEventPayload event = ChatEventPayload.builder()
         .destination("/topic/chat/123")
-        .payloadJson("\"payload\"")
+        .payload("payload")
         .build();
 
     when(objectMapper.readValue(body, ChatEventPayload.class)).thenReturn(event);
-    when(objectMapper.readValue("\"payload\"", Object.class)).thenReturn("payload");
 
     listener.onMessage(message, new byte[0]);
 
@@ -52,11 +51,10 @@ class RedisChatEventListenerTest {
 
     ChatEventPayload event = ChatEventPayload.builder()
         .destination("/user/john_doe/queue/replies")
-        .payloadJson("\"payload\"")
+        .payload("payload")
         .build();
 
     when(objectMapper.readValue(body, ChatEventPayload.class)).thenReturn(event);
-    when(objectMapper.readValue("\"payload\"", Object.class)).thenReturn("payload");
 
     listener.onMessage(message, new byte[0]);
 

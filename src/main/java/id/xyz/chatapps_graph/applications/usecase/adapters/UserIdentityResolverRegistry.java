@@ -32,16 +32,16 @@ public class UserIdentityResolverRegistry {
       List<UserIdentityResolver> resolvers,
       CachePort cachePort,
       UserLinkedAccountRepository linkedAccountRepository,
-      @Value("${app.identity.cache-ttl-seconds:3600}") long cacheTtlSeconds,
-      @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String keycloakIssuer) {
+      id.xyz.chatapps_graph.infrastructure.config.properties.AppIdentityProperties identityProperties,
+      id.xyz.chatapps_graph.infrastructure.config.properties.OAuth2JwtProperties oauth2Properties) {
 
     this.cachePort = cachePort;
     this.linkedAccountRepository = linkedAccountRepository;
-    this.cacheTtl = Duration.ofSeconds(cacheTtlSeconds);
+    this.cacheTtl = Duration.ofSeconds(identityProperties.cacheTtlSeconds() > 0 ? identityProperties.cacheTtlSeconds() : 3600);
 
     for (UserIdentityResolver resolver : resolvers) {
       if (resolver.provider().equals(ProviderType.KEYCLOAK.name())) {
-        resolverMap.put(keycloakIssuer, resolver);
+        resolverMap.put(oauth2Properties.issuerUri(), resolver);
       } else if (resolver.provider().equals(ProviderType.GOOGLE.name())) {
         resolverMap.put("https://accounts.google.com", resolver);
       }

@@ -66,7 +66,7 @@ class MessageServiceImplTest {
   @Mock private LinkPreviewService linkPreviewService;
   @Mock private RabbitTemplate rabbitTemplate;
   @Mock private PlatformTransactionManager transactionManager;
-
+  @Mock private id.xyz.chatapps_graph.infrastructure.monitoring.MetricsFacade metricsFacade;
 
   @InjectMocks private MessageServiceImpl messageService;
 
@@ -127,9 +127,10 @@ class MessageServiceImplTest {
     assertNotNull(result);
     assertEquals(100L, result.message().getMessageId());
 
-    ArgumentCaptor<MessageReceipt> captor = ArgumentCaptor.forClass(MessageReceipt.class);
-    verify(receiptRepository).save(captor.capture());
-    MessageReceipt receipt = captor.getValue();
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<List<MessageReceipt>> captor = ArgumentCaptor.forClass(List.class);
+    verify(receiptRepository).saveAll(captor.capture());
+    MessageReceipt receipt = captor.getValue().getFirst();
     assertEquals(RECIPIENT_ID, receipt.getUserId());
     assertEquals(100L, receipt.getMessageId());
     assertEquals(ReceiptStatus.SENT.getValue(), receipt.getStatus());

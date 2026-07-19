@@ -40,12 +40,15 @@ class UserIdentityResolverRegistryTest {
     when(keycloakResolver.provider()).thenReturn("KEYCLOAK");
     when(googleResolver.provider()).thenReturn("GOOGLE");
 
+    id.xyz.chatapps_graph.infrastructure.config.properties.AppIdentityProperties props = new id.xyz.chatapps_graph.infrastructure.config.properties.AppIdentityProperties(3600L);
+    id.xyz.chatapps_graph.infrastructure.config.properties.OAuth2JwtProperties oauthProps = new id.xyz.chatapps_graph.infrastructure.config.properties.OAuth2JwtProperties(KEYCLOAK_ISSUER);
+
     registry = new UserIdentityResolverRegistry(
         List.of(keycloakResolver, googleResolver),
         cachePort,
         linkedAccountRepository,
-        3600L,
-        KEYCLOAK_ISSUER
+        props,
+        oauthProps
     );
   }
 

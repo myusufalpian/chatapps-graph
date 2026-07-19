@@ -38,7 +38,8 @@ public class ExportTaskConsumer {
   @Transactional
   public void consume(ExportTask task) {
     long started = System.nanoTime();
-    if (repository.claim(task.exportUuid(), OffsetDateTime.now().plusMinutes(15)) != 1) return;
+    OffsetDateTime now = OffsetDateTime.now();
+    if (repository.claim(task.exportUuid(), now.plusMinutes(15), now) != 1) return;
     ExportJob job = repository.findByExportUuid(task.exportUuid()).orElseThrow();
     Path file = null;
     try {
@@ -48,20 +49,11 @@ public class ExportTaskConsumer {
         json.writeStartObject();
         json.writeNumberField("schemaVersion", 1);
         json.writeStringField("snapshotAt", task.snapshotAt().toString());
-        writeSingleObject(json, "user", "SELECT user_uuid, user_phone, user_mail, user_full_name, profile_photo "
-            + "FROM users WHERE user_id = ? AND created_at <= ?", task.userId(), task.snapshotAt());
-        writeArray(json, "conversations", "SELECT c.conversation_uuid, c.conversation_type, c.created_at "
-            + "FROM conversation c JOIN conversation_participant p ON p.conversation_id = c.conversation_id "
-            + "WHERE p.user_id = ? AND c.created_at <= ?", task.userId(), task.snapshotAt());
-        writeArray(json, "messages", "SELECT m.message_uuid, m.conversation_id, m.sender_id, m.message_type, "
-            + "m.content, m.attachment_id, m.message_status, m.created_at FROM message m "
-            + "JOIN conversation_participant p ON p.conversation_id = m.conversation_id "
-            + "WHERE p.user_id = ? AND m.created_at <= ? AND m.deleted_at IS NULL ORDER BY m.created_at, m.message_id",
+        writeSingleObject(json, "user", id.xyz.chatapps_graph.infrastructure.constant.SQLConstants.ExportSQL.SELECT_USER, task.userId(), task.snapshotAt());
+        writeArray(json, "conversations", id.xyz.chatapps_graph.infrastructure.constant.SQLConstants.ExportSQL.SELECT_CONVERSATIONS, task.userId(), task.snapshotAt());
+        writeArray(json, "messages", id.xyz.chatapps_graph.infrastructure.constant.SQLConstants.ExportSQL.SELECT_MESSAGES,
             task.userId(), task.snapshotAt());
-        writeArray(json, "attachments", "SELECT DISTINCT a.attachment_uuid, a.file_name, a.file_size, "
-            + "a.content_type, a.attachment_type, a.file_path, a.created_at FROM attachment a "
-            + "JOIN message m ON m.attachment_id = a.attachment_id JOIN conversation_participant p "
-            + "ON p.conversation_id = m.conversation_id WHERE p.user_id = ? AND a.created_at <= ?",
+        writeArray(json, "attachments", id.xyz.chatapps_graph.infrastructure.constant.SQLConstants.ExportSQL.SELECT_ATTACHMENTS,
             task.userId(), task.snapshotAt());
         json.writeEndObject();
       }

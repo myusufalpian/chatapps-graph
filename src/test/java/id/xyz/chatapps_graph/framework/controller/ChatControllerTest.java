@@ -225,7 +225,7 @@ class ChatControllerTest {
     conv.setConversationUuid("conv-uuid");
 
     when(conversationService.findConversationByUuid("conv-uuid")).thenReturn(conv);
-    when(conversationService.isParticipant(10L, USER_ID)).thenReturn(true);
+    doNothing().when(conversationService).validateParticipant(10L, USER_ID);
     when(localeResolver.resolve(any())).thenReturn("id");
 
     Message msg = new Message();
@@ -259,7 +259,7 @@ class ChatControllerTest {
     conv.setConversationUuid("conv-uuid");
 
     when(conversationService.findConversationByUuid("conv-uuid")).thenReturn(conv);
-    when(conversationService.isParticipant(10L, USER_ID)).thenReturn(true);
+    doNothing().when(conversationService).validateParticipant(10L, USER_ID);
 
     ReadReceiptResult receiptResult = new ReadReceiptResult(true, List.of("123456789"), "reader-uuid");
     when(messageService.markAsRead("conv-uuid", USER_ID)).thenReturn(receiptResult);
@@ -291,7 +291,7 @@ class ChatControllerTest {
     msg.setContent("query text");
     msg.setCreatedAt(java.time.OffsetDateTime.now());
 
-    when(messageService.searchMessages(USER_ID, "query", "conv-uuid", null, 20))
+    when(messageService.searchMessages(USER_ID, "query", "conv-uuid", null, 21))
         .thenReturn(List.of(msg));
 
     when(messageResponseMapper.toSearchResultItemList(any())).thenReturn(List.of());

@@ -15,12 +15,4 @@ public record SendMessageRequest(
     String replyToMessageUuid,
     String attachmentType
 ) {
-
-  public static SendMessageRequest fromJson(String json) {
-    try {
-      return JsonUtil.stringToModel(json, SendMessageRequest.class);
-    } catch (Exception e) {
-      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), ErrorConstants.INVALID_METADATA, "Invalid metadata JSON");
-    }
-  }
 }

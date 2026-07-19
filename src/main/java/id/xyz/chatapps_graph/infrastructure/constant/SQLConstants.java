@@ -10,6 +10,23 @@ public class SQLConstants {
   }
 
   @UtilityClass
+  public static class ExportSQL {
+    public static final String SELECT_USER = "SELECT user_uuid, user_phone, user_mail, user_full_name, profile_photo "
+        + "FROM users WHERE user_id = ? AND created_at <= ?";
+    public static final String SELECT_CONVERSATIONS = "SELECT c.conversation_uuid, c.conversation_type, c.created_at "
+        + "FROM conversation c JOIN conversation_participant p ON p.conversation_id = c.conversation_id "
+        + "WHERE p.user_id = ? AND c.created_at <= ?";
+    public static final String SELECT_MESSAGES = "SELECT m.message_uuid, m.conversation_id, m.sender_id, m.message_type, "
+        + "m.content, m.attachment_id, m.message_status, m.created_at FROM message m "
+        + "JOIN conversation_participant p ON p.conversation_id = m.conversation_id "
+        + "WHERE p.user_id = ? AND m.created_at <= ? AND m.deleted_at IS NULL ORDER BY m.created_at, m.message_id";
+    public static final String SELECT_ATTACHMENTS = "SELECT DISTINCT a.attachment_uuid, a.file_name, a.file_size, "
+        + "a.content_type, a.attachment_type, a.file_path, a.created_at FROM attachment a "
+        + "JOIN message m ON m.attachment_id = a.attachment_id JOIN conversation_participant p "
+        + "ON p.conversation_id = m.conversation_id WHERE p.user_id = ? AND a.created_at <= ?";
+  }
+
+  @UtilityClass
   public static class MessageSQL {
     public static final String FIND_MESSAGES_AFTER_CURSOR =
         "SELECT m.* FROM message m " +

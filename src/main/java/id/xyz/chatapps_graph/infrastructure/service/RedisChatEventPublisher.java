@@ -18,10 +18,9 @@ public class RedisChatEventPublisher {
 
   public void publish(String destination, Object payload) {
     try {
-      String payloadJson = objectMapper.writeValueAsString(payload);
       ChatEventPayload event = ChatEventPayload.builder()
           .destination(destination)
-          .payloadJson(payloadJson)
+          .payload(payload)
           .build();
       String eventJson = objectMapper.writeValueAsString(event);
       stringRedisTemplate.convertAndSend(RedisPubSubConfig.CHAT_EVENTS_TOPIC, eventJson);

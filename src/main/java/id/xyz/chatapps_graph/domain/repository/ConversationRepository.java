@@ -11,6 +11,6 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
 
   Optional<Conversation> findByConversationUuid(String conversationUuid);
 
-  List<Conversation> findByDisappearingTtlIsNotNull();
+  List<Conversation> findByDisappearingTtlIsNotNull(org.springframework.data.domain.Pageable pageable);
 }
 

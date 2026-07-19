@@ -18,10 +18,10 @@ public interface ExportJobRepository extends JpaRepository<ExportJob, Long> {
   boolean existsByUserIdAndStatusIn(Long userId, Iterable<ExportJobStatus> statuses);
 
   @Modifying
-  @Query("UPDATE ExportJob e SET e.status = 'PROCESSING', e.startedAt = CURRENT_TIMESTAMP, "
-      + "e.processingStartedAt = CURRENT_TIMESTAMP, e.leaseExpiresAt = :leaseExpiresAt "
+  @Query("UPDATE ExportJob e SET e.status = 'PROCESSING', e.startedAt = :now, "
+      + "e.processingStartedAt = :now, e.leaseExpiresAt = :leaseExpiresAt "
       + "WHERE e.exportUuid = :uuid AND e.status = 'PENDING'")
-  int claim(@Param("uuid") UUID exportUuid, @Param("leaseExpiresAt") OffsetDateTime leaseExpiresAt);
+  int claim(@Param("uuid") UUID exportUuid, @Param("leaseExpiresAt") OffsetDateTime leaseExpiresAt, @Param("now") OffsetDateTime now);
 
   @Modifying
   @Query("UPDATE ExportJob e SET e.status = 'EXPIRED' "

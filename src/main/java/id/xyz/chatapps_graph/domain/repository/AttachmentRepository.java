@@ -17,8 +17,8 @@ public interface AttachmentRepository extends JpaRepository<Attachment, Long> {
 
   @Modifying
   @Query("UPDATE Attachment a SET a.metadataStatus = 'FAILED', a.metadataError = :error, "
-      + "a.metadataProcessedAt = CURRENT_TIMESTAMP WHERE a.attachmentId = :id")
-  int failMetadata(@Param("id") Long attachmentId, @Param("error") String error);
+      + "a.metadataProcessedAt = :now WHERE a.attachmentId = :id")
+  int failMetadata(@Param("id") Long attachmentId, @Param("error") String error, @Param("now") java.time.OffsetDateTime now);
 
   java.util.Optional<Attachment> findByAttachmentUuid(String attachmentUuid);
 }

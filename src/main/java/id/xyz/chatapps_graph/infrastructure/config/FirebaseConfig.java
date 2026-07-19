@@ -5,7 +5,6 @@ import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import java.io.InputStream;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
@@ -15,8 +14,9 @@ import org.springframework.util.StringUtils;
 @Configuration
 public class FirebaseConfig {
 
-  public FirebaseConfig(@Value("${firebase.credentials-path:}") String credentialsPath,
+  public FirebaseConfig(id.xyz.chatapps_graph.infrastructure.config.properties.FirebaseProperties properties,
       ResourceLoader resourceLoader) {
+    String credentialsPath = properties.credentialsPath();
     if (!StringUtils.hasLength(credentialsPath)) {
       log.info("Firebase credentials path not configured, push notifications disabled");
       return;

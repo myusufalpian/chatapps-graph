@@ -5,5 +5,5 @@ import lombok.Builder;
 @Builder
 public record ChatEventPayload(
     String destination,
-    String payloadJson
+    Object payload
 ) {}

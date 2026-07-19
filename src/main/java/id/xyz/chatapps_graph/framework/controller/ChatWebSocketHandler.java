@@ -20,6 +20,9 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import id.xyz.chatapps_graph.applications.usecase.WebSocketBroadcastService;
 import org.springframework.stereotype.Controller;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Controller
 @RequiredArgsConstructor
 public class ChatWebSocketHandler {
@@ -33,6 +36,7 @@ public class ChatWebSocketHandler {
       @Payload WebSocketSendMessage payload, SimpMessageHeaderAccessor headerAccessor) {
     Long userId = resolveUserId(headerAccessor);
     if (userId == null) {
+      log.warn("Unauthorized WebSocket access attempt in handleSendMessage");
       return;
     }
 
@@ -59,6 +63,7 @@ public class ChatWebSocketHandler {
       @Payload DeliveryReceiptRequest request, SimpMessageHeaderAccessor headerAccessor) {
     Long userId = resolveUserId(headerAccessor);
     if (userId == null) {
+      log.warn("Unauthorized WebSocket access attempt in handleDelivered");
       return;
     }
 
@@ -84,6 +89,7 @@ public class ChatWebSocketHandler {
       @Payload TypingRequest request, SimpMessageHeaderAccessor headerAccessor) {
     Long userId = resolveUserId(headerAccessor);
     if (userId == null) {
+      log.warn("Unauthorized WebSocket access attempt in handleTyping");
       return;
     }
 

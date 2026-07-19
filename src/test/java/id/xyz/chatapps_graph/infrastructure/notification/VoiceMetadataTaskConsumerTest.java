@@ -26,6 +26,7 @@ class VoiceMetadataTaskConsumerTest {
   @Mock private FileStoragePort storage;
   @Mock private AudioMetadataExtractor extractor;
   @Mock private RabbitTemplate rabbitTemplate;
+  @Mock private id.xyz.chatapps_graph.infrastructure.monitoring.MetricsFacade metricsFacade;
 
   @Test
   void duplicateTaskIsSkippedWhenClaimFails() throws Exception {
@@ -34,7 +35,7 @@ class VoiceMetadataTaskConsumerTest {
     when(repository.findById(1L)).thenReturn(Optional.of(attachment));
     when(repository.claimMetadata(1L)).thenReturn(0);
 
-    new VoiceMetadataTaskConsumer(repository, storage, extractor, rabbitTemplate)
+    new VoiceMetadataTaskConsumer(repository, storage, extractor, rabbitTemplate, metricsFacade)
         .consume(VoiceMetadataTask.create(1L));
 
     verify(storage, never()).downloadFile(any());
@@ -50,7 +51,7 @@ class VoiceMetadataTaskConsumerTest {
     when(storage.downloadFile("voice/a.ogg")).thenReturn(new ByteArrayInputStream(new byte[]{1}));
     when(extractor.extract(any())).thenThrow(new SocketTimeoutException("temporary failure"));
 
-    new VoiceMetadataTaskConsumer(repository, storage, extractor, rabbitTemplate)
+    new VoiceMetadataTaskConsumer(repository, storage, extractor, rabbitTemplate, metricsFacade)
         .consume(VoiceMetadataTask.create(1L));
 
     verify(repository).save(attachment);
