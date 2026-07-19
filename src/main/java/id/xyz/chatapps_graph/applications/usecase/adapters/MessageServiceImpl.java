@@ -102,7 +102,7 @@ public class MessageServiceImpl implements MessageService {
 
 
       // Update denormalized fields
-      String preview = truncatePreview(content, messageType);
+      String preview = id.xyz.chatapps_graph.infrastructure.mapper.MessageMapper.buildPreview(content, messageType, 100);
       participantRepository.incrementUnreadAndUpdateLastMessage(
           conversation.getConversationId(), senderId, message.getCreatedAt(), preview, messageType);
       participantRepository.updateSenderLastMessage(
@@ -173,11 +173,11 @@ public class MessageServiceImpl implements MessageService {
       if (latestId.isEmpty() || latestId.get() < message.getMessageId()) {
         if (latestId.isPresent()) {
           messageRepository.findById(latestId.get()).ifPresent(latest -> {
-            String preview = truncatePreview(latest.getContent(), latest.getMessageType());
+            String preview = id.xyz.chatapps_graph.infrastructure.mapper.MessageMapper.buildPreview(latest.getContent(), latest.getMessageType(), 100);
             participantRepository.updateLastMessagePreviewForAll(message.getConversationId(), preview);
           });
         } else {
-          participantRepository.updateLastMessagePreviewForAll(message.getConversationId(), "Pesan dihapus");
+          participantRepository.updateLastMessagePreviewForAll(message.getConversationId(), id.xyz.chatapps_graph.infrastructure.constant.GeneralConstants.ResponseConstants.MESSAGE_DELETED);
         }
       }
     } else {
@@ -219,8 +219,8 @@ public class MessageServiceImpl implements MessageService {
     if (shouldUpdateReceipts && !senderIds.isEmpty()) {
       targetUserPhones = userRepository.findAllById(senderIds).stream()
           .filter(sender -> !Boolean.TRUE.equals(sender.getHideReadReceipt()))
-          .filter(sender -> org.springframework.util.StringUtils.hasLength(sender.getUserPhone()))
           .map(User::getUserPhone)
+          .filter(StringUtils::hasLength)
           .toList();
     }
 
@@ -300,14 +300,19 @@ public class MessageServiceImpl implements MessageService {
   }
 
   private void createReceipts(Long messageId, Long conversationId, Long senderId) {
-    participantRepository.findAllByConversationId(conversationId).stream()
+    List<MessageReceipt> receipts = participantRepository.findAllByConversationId(conversationId).stream()
         .filter(p -> !p.getUserId().equals(senderId))
-        .forEach(p -> receiptRepository.save(MessageReceipt.builder()
+        .map(p -> MessageReceipt.builder()
             .messageId(messageId)
             .userId(p.getUserId())
             .status(ReceiptStatus.SENT.getValue())
             .isDeletedForMe(false)
-            .build()));
+            .build())
+        .toList();
+    
+    if (!receipts.isEmpty()) {
+      receiptRepository.saveAll(receipts);
+    }
   }
 
   @Override
@@ -338,7 +343,7 @@ public class MessageServiceImpl implements MessageService {
 
     createReceipts(forwarded.getMessageId(), target.getConversationId(), userId);
 
-    String preview = truncatePreview(original.getContent(), original.getMessageType());
+    String preview = id.xyz.chatapps_graph.infrastructure.mapper.MessageMapper.buildPreview(original.getContent(), original.getMessageType(), 100);
     participantRepository.incrementUnreadAndUpdateLastMessage(
         target.getConversationId(), userId, forwarded.getCreatedAt(), preview, original.getMessageType());
     participantRepository.updateSenderLastMessage(
@@ -433,12 +438,6 @@ public class MessageServiceImpl implements MessageService {
     }
   }
 
-  private String truncatePreview(String content, String messageType) {
-    if (!StringUtils.hasLength(content)) {
-      return messageType;
-    }
-    return content.length() <= 100 ? content : content.substring(0, 100);
-  }
 
   @Override
   @Transactional

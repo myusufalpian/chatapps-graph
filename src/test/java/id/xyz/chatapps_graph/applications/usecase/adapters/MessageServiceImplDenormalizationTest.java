@@ -42,6 +42,10 @@ class MessageServiceImplDenormalizationTest {
   @Mock private RateLimitService rateLimitService;
   @Mock private id.xyz.chatapps_graph.domain.repository.MessageReactionRepository reactionRepository;
   @Mock private id.xyz.chatapps_graph.applications.usecase.PushNotificationService pushNotificationService;
+  @Mock private id.xyz.chatapps_graph.infrastructure.monitoring.MetricsFacade metricsFacade;
+  @Mock private org.springframework.amqp.rabbit.core.RabbitTemplate rabbitTemplate;
+  @Mock private id.xyz.chatapps_graph.infrastructure.config.properties.ChatEditProperties chatEditProperties;
+  @Mock private id.xyz.chatapps_graph.domain.repository.MessageEditHistoryRepository editHistoryRepository;
 
   @InjectMocks private MessageServiceImpl messageService;
 

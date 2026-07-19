@@ -13,6 +13,9 @@ import java.util.Arrays;
 @Component
 @Slf4j
 public class LoggingAspect {
+
+    private static final long SLOW_THRESHOLD_MS = 1000;
+
     /**
      * Pointcut that targets all classes inside the 'applications.usecase' package.
      * "execution(* id.xyz..applications.usecase..*(..))"
@@ -37,7 +40,7 @@ public class LoggingAspect {
         String methodName = joinPoint.getSignature().getName();
         Object[] args = joinPoint.getArgs();
 
-        log.info("▶ START: {}.{}() with args: {}", className, methodName, Arrays.toString(args));
+        log.info("START: {}.{}() with args: {}", className, methodName, Arrays.toString(args));
 
         Object result;
         try {
@@ -45,13 +48,18 @@ public class LoggingAspect {
             result = joinPoint.proceed();
         } catch (Throwable e) {
             // Optional: Log exception before throwing it up
-            log.error("⚠ EXCEPTION in {}.{}: {}", className, methodName, e.getMessage());
+            log.error("EXCEPTION in {}.{}: {}", className, methodName, e.getMessage());
             throw e;
         }
 
         // 3. Log Method Exit & Duration
         long duration = System.currentTimeMillis() - start;
-        log.info("◀ END: {}.{}() - Taken: {} ms", className, methodName, duration);
+        log.info("END: {}.{}() - Taken: {} ms", className, methodName, duration);
+
+        if (duration > SLOW_THRESHOLD_MS) {
+            log.warn("PERFORMANCE ALERT: {}.{} took {} ms (Threshold: {} ms)",
+                    className, methodName, duration, SLOW_THRESHOLD_MS);
+        }
 
         return result;
     }

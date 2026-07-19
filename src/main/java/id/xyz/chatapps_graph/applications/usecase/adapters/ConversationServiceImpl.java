@@ -65,6 +65,14 @@ public class ConversationServiceImpl implements ConversationService {
     return participantRepository.findByConversationIdAndUserId(conversationId, userId).isPresent();
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public void validateParticipant(Long conversationId, Long userId) {
+    if (!isParticipant(conversationId, userId)) {
+      throw new GeneralException(HttpStatus.FORBIDDEN.value(), "FORBIDDEN", "Not a participant");
+    }
+  }
+
   private Conversation createPrivateConversation(Long userIdA, Long userIdB) {
     var now = OffsetDateTime.now();
 

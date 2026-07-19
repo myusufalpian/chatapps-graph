@@ -29,7 +29,7 @@ public class RedisChatEventListener implements MessageListener {
     try {
       ChatEventPayload event = objectMapper.readValue(body, ChatEventPayload.class);
       
-      Object parsedPayload = objectMapper.readValue(event.payloadJson(), Object.class);
+      Object parsedPayload = event.payload();
       
       if (event.destination().startsWith("/user/")) {
         String dest = event.destination().substring(6); // remove "/user/"

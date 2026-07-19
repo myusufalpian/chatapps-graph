@@ -9,6 +9,7 @@ public class GeneralConstants {
     public static final String SUCCESS_CREATE_DATA = "Create data success";
     public static final String SUCCESS_UPDATE_PROFILE = "Profile updated successfully";
     public static final String SUCCESS_SYNC_CONTACTS = "Contacts synced successfully";
+    public static final String MESSAGE_DELETED = "Pesan dihapus";
   }
 
   @UtilityClass
@@ -33,10 +34,10 @@ public class GeneralConstants {
 
   @UtilityClass
   public static class StatusConstants {
-    public static Integer INACTIVE = 1;
-    public static Integer ACTIVE = 0;
-    public static Integer DELETED = 2;
-    public static Integer PENDING_PROFILE = 3;
+    public static final Integer INACTIVE = 1;
+    public static final Integer ACTIVE = 0;
+    public static final Integer DELETED = 2;
+    public static final Integer PENDING_PROFILE = 3;
   }
 
 }

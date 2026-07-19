@@ -29,11 +29,7 @@ public class VoiceMetadataTaskConsumer {
   private final RabbitTemplate rabbitTemplate;
   private final MetricsFacade metricsFacade;
 
-  public VoiceMetadataTaskConsumer(AttachmentRepository attachmentRepository,
-      FileStoragePort fileStoragePort, AudioMetadataExtractor extractor,
-      RabbitTemplate rabbitTemplate) {
-    this(attachmentRepository, fileStoragePort, extractor, rabbitTemplate, null);
-  }
+
 
   @RabbitListener(queues = RabbitMQConfig.VOICE_METADATA_QUEUE)
   @Transactional
@@ -76,7 +72,7 @@ public class VoiceMetadataTaskConsumer {
         rabbitTemplate.convertAndSend(queue, retry);
         if (metricsFacade != null) metricsFacade.recordRabbitMQLatency("voice_metadata", "retry", elapsed(started));
       } else {
-        attachmentRepository.failMetadata(task.attachmentId(), exception.getMessage());
+        attachmentRepository.failMetadata(task.attachmentId(), exception.getMessage(), java.time.OffsetDateTime.now());
         if (metricsFacade != null) metricsFacade.recordRabbitMQLatency("voice_metadata", "failed", elapsed(started));
       }
     } finally {

@@ -31,11 +31,10 @@ class RedisChatEventPublisherTest {
     
     ChatEventPayload eventPayload = ChatEventPayload.builder()
         .destination(destination)
-        .payloadJson(payloadJson)
+        .payload(payload)
         .build();
-    String eventJson = "{\"destination\":\"/topic/test\",\"payloadJson\":\"\\\"test-payload\\\"\"}";
+    String eventJson = "{\"destination\":\"/topic/test\",\"payload\":\"test-payload\"}";
 
-    when(objectMapper.writeValueAsString(payload)).thenReturn(payloadJson);
     when(objectMapper.writeValueAsString(eventPayload)).thenReturn(eventJson);
 
     publisher.publish(destination, payload);

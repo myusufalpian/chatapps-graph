@@ -37,7 +37,9 @@ class MinioServiceTest {
 
   @BeforeEach
   void setUp() {
-    minioService = new MinioService(minioClient, BUCKET_NAME);
+    id.xyz.chatapps_graph.infrastructure.config.properties.MinioProperties minioProperties = new id.xyz.chatapps_graph.infrastructure.config.properties.MinioProperties();
+    minioProperties.setBucket(BUCKET_NAME);
+    minioService = new MinioService(minioClient, minioProperties);
   }
 
   @Test

@@ -1,7 +1,6 @@
 package id.xyz.chatapps_graph.infrastructure.scheduler;
 
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.refEq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,7 +39,7 @@ class DisappearingMessageSchedulerTest {
         .disappearingTtl(168) // 7 days
         .build();
 
-    when(conversationRepository.findByDisappearingTtlIsNotNull()).thenReturn(List.of(conv1, conv2));
+    when(conversationRepository.findByDisappearingTtlIsNotNull(org.mockito.ArgumentMatchers.any(PageRequest.class))).thenReturn(List.of(conv1, conv2));
 
     // We can use refEq on PageRequest to match PageRequest.of(0, 1000) and PageRequest.of(0, 1000 - size)
     // For date matching of threshold, we use refEq with OffsetDateTime. But since OffsetDateTime is dynamic inside the method,
@@ -89,7 +88,7 @@ class DisappearingMessageSchedulerTest {
         .disappearingTtl(24)
         .build();
 
-    when(conversationRepository.findByDisappearingTtlIsNotNull()).thenReturn(List.of(conv));
+    when(conversationRepository.findByDisappearingTtlIsNotNull(org.mockito.ArgumentMatchers.any(PageRequest.class))).thenReturn(List.of(conv));
     when(messageRepository.findExpiredMessageIds(
         eq(10L),
         org.mockito.ArgumentMatchers.argThat(t -> t.isBefore(OffsetDateTime.now())),

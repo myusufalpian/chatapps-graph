@@ -4,7 +4,6 @@ import id.xyz.chatapps_graph.applications.usecase.NotificationChannel;
 import id.xyz.chatapps_graph.domain.enums.NotificationChannelType;
 import id.xyz.chatapps_graph.infrastructure.utility.MaskingUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -17,9 +16,9 @@ public class EmailNotificationChannel implements NotificationChannel {
   private final String fromAddress;
 
   public EmailNotificationChannel(JavaMailSender mailSender,
-                                  @Value("${spring.mail.username:noreply@chatapps.xyz}") String fromAddress) {
+                                  org.springframework.boot.autoconfigure.mail.MailProperties mailProperties) {
     this.mailSender = mailSender;
-    this.fromAddress = fromAddress;
+    this.fromAddress = mailProperties.getUsername() != null ? mailProperties.getUsername() : "noreply@chatapps.xyz";
   }
 
   @Override

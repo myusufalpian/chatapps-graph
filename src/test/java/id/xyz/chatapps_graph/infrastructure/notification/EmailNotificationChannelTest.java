@@ -27,7 +27,9 @@ class EmailNotificationChannelTest {
   private static final String FROM = "noreply@chatapps.xyz";
 
   private EmailNotificationChannel createChannel() {
-    return new EmailNotificationChannel(mailSender, FROM);
+    org.springframework.boot.autoconfigure.mail.MailProperties props = new org.springframework.boot.autoconfigure.mail.MailProperties();
+    props.setUsername(FROM);
+    return new EmailNotificationChannel(mailSender, props);
   }
 
   @Test

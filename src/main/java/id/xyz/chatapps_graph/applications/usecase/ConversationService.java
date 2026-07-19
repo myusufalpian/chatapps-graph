@@ -14,6 +14,8 @@ public interface ConversationService {
 
   boolean isParticipant(Long conversationId, Long userId);
 
+  void validateParticipant(Long conversationId, Long userId);
+
   Conversation createMultiChat(Long creatorId, List<Long> participantUserIds);
 
   MultiChatResponse createMultiChatByUuids(Long creatorId, List<String> participantUuids);

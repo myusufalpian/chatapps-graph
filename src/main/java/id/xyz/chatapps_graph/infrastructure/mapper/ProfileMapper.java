@@ -1,23 +1,21 @@
-package id.xyz.chatapps_graph.framework.mapper;
+package id.xyz.chatapps_graph.infrastructure.mapper;
 
 import id.xyz.chatapps_graph.domain.entity.Contact;
 import id.xyz.chatapps_graph.domain.entity.User;
 import java.util.HashMap;
 import java.util.Map;
-import org.springframework.stereotype.Component;
 
-@Component
 public class ProfileMapper {
 
-  public Map<String, Object> toProfileMap(User user) {
+  public static Map<String, Object> toProfileMap(User user) {
     return buildProfileMap(user, true);
   }
 
-  public Map<String, Object> toPublicProfileMap(User user) {
+  public static Map<String, Object> toPublicProfileMap(User user) {
     return buildProfileMap(user, false);
   }
 
-  private Map<String, Object> buildProfileMap(User user, boolean includePhone) {
+  private static Map<String, Object> buildProfileMap(User user, boolean includePhone) {
     Map<String, Object> map = new HashMap<>();
     map.put("userUuid", user.getUserUuid());
     map.put("phone", includePhone ? user.getUserPhone() : null);
@@ -27,7 +25,7 @@ public class ProfileMapper {
     return map;
   }
 
-  public Map<String, Object> toContactMap(Contact contact) {
+  public static Map<String, Object> toContactMap(Contact contact) {
     User cu = contact.getContactUser();
     Map<String, Object> map = new HashMap<>();
     map.put("contactUuid", contact.getContactUuid());

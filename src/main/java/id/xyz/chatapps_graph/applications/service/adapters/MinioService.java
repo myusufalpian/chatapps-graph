@@ -28,9 +28,9 @@ public class MinioService implements FileStoragePort {
 
   @Autowired
   public MinioService(MinioClient minioClient,
-      @Value("${application.minio.bucket}") String bucketName) {
+      id.xyz.chatapps_graph.infrastructure.config.properties.MinioProperties minioProperties) {
     this.minioClient = minioClient;
-    this.bucketName = bucketName;
+    this.bucketName = minioProperties.getBucket();
   }
 
   @Override

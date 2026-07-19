@@ -78,7 +78,12 @@ public class ChatController extends BaseApiController {
       @RequestPart(value = "file", required = false) MultipartFile file,
       @RequestPart("metadata") String metadataJson) {
 
-    SendMessageRequest request = SendMessageRequest.fromJson(metadataJson);
+    SendMessageRequest request;
+    try {
+      request = id.xyz.chatapps_graph.infrastructure.utility.JsonUtil.stringToModel(metadataJson, SendMessageRequest.class);
+    } catch (Exception e) {
+      throw new GeneralException(HttpStatus.BAD_REQUEST.value(), ErrorConstants.INVALID_METADATA, "Invalid metadata JSON");
+    }
 
     Long attachmentId = null;
     if (file != null && !file.isEmpty()) {
@@ -107,9 +112,7 @@ public class ChatController extends BaseApiController {
       HttpServletRequest httpRequest) {
 
     Conversation conversation = conversationService.findConversationByUuid(uuid);
-    if (!conversationService.isParticipant(conversation.getConversationId(), userId)) {
-      throw new GeneralException(HttpStatus.FORBIDDEN.value(), ErrorConstants.FORBIDDEN, "Not a participant");
-    }
+    conversationService.validateParticipant(conversation.getConversationId(), userId);
 
     String locale = localeResolver.resolve(httpRequest);
 
@@ -167,9 +170,7 @@ public class ChatController extends BaseApiController {
       @RequestBody MarkReadRequest request) {
 
     Conversation conversation = conversationService.findConversationByUuid(request.conversationUuid());
-    if (!conversationService.isParticipant(conversation.getConversationId(), userId)) {
-      throw new GeneralException(HttpStatus.FORBIDDEN.value(), ErrorConstants.FORBIDDEN, "Not a participant");
-    }
+    conversationService.validateParticipant(conversation.getConversationId(), userId);
 
     ReadReceiptResult result = messageService.markAsRead(request.conversationUuid(), userId);
     if (result.receiptsUpdated()) {
@@ -207,7 +208,7 @@ public class ChatController extends BaseApiController {
     }
 
     int fetchLimit = Math.min(limit, 50);
-    List<Message> messages = messageService.searchMessages(userId, query, conversationUuid, cursor, fetchLimit);
+    List<Message> messages = messageService.searchMessages(userId, query, conversationUuid, cursor, fetchLimit + 1);
 
     boolean hasMore = messages.size() > fetchLimit;
     List<Message> resultMessages = hasMore ? messages.subList(0, fetchLimit) : messages;
@@ -293,14 +294,7 @@ public class ChatController extends BaseApiController {
       @PathVariable("uuid") String uuid,
       @Valid @RequestBody DisappearingTtlRequest request) {
 
-    Integer ttlHours = switch (request.ttl()) {
-      case "24h" -> 24;
-      case "7d" -> 168;
-      case "30d" -> 720;
-      case "off" -> null;
-      case null, default ->
-          throw new GeneralException(HttpStatus.BAD_REQUEST.value(), "INVALID_TTL", "Invalid TTL value");
-    };
+    Integer ttlHours = request.toHours();
 
     Conversation conversation = conversationService.updateDisappearingTtl(uuid, userId, ttlHours);
     String currentTtl = conversation.getDisappearingTtl() == null ? "off" : request.ttl();

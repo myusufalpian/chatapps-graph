@@ -1,6 +1,5 @@
 package id.xyz.chatapps_graph.infrastructure.config.security;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
@@ -16,8 +15,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class KeycloakJwtConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
-  @Value("${jwt.auth.converter.principal-attribute}")
-  private String principalAttribute;
+  private final id.xyz.chatapps_graph.infrastructure.config.properties.KeycloakJwtProperties properties;
+
+  public KeycloakJwtConverter(id.xyz.chatapps_graph.infrastructure.config.properties.KeycloakJwtProperties properties) {
+    this.properties = properties;
+  }
 
   @Override
   public AbstractAuthenticationToken convert(@NonNull Jwt jwt) {
@@ -27,6 +29,6 @@ public class KeycloakJwtConverter implements Converter<Jwt, AbstractAuthenticati
     if (realmAccess != null && realmAccess.get("roles") instanceof Collection<?> roles) {
       roles.forEach(role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + role)));
     }
-    return new JwtAuthenticationToken(jwt, authorities, jwt.getClaim(principalAttribute));
+    return new JwtAuthenticationToken(jwt, authorities, jwt.getClaim(properties.principalAttribute()));
   }
 }

@@ -102,7 +102,7 @@ public class ConversationListServiceImpl implements ConversationListService {
             if (group != null) {
               groupName = group.getGroupName();
               if (group.getAvatarPath() != null) {
-                groupAvatarUrl = minioProperties.getEndpoint() + "/" + minioProperties.getBucket() + "/" + group.getAvatarPath();
+                groupAvatarUrl = minioProperties.buildUrl(group.getAvatarPath());
               }
             }
           }

@@ -25,26 +25,35 @@ public class DisappearingMessageScheduler {
   public void cleanupExpiredMessages() {
     log.info("Starting disappearing messages cleanup job...");
     try {
-      List<Conversation> conversations = conversationRepository.findByDisappearingTtlIsNotNull();
+      int page = 0;
+      int size = 500;
       int totalDeleted = 0;
       OffsetDateTime now = OffsetDateTime.now();
 
-      for (Conversation conv : conversations) {
-        if (totalDeleted >= 1000) {
+      while (totalDeleted < 1000) {
+        List<Conversation> conversations = conversationRepository.findByDisappearingTtlIsNotNull(PageRequest.of(page, size));
+        if (conversations.isEmpty()) {
           break;
         }
-        if (conv.getDisappearingTtl() != null && conv.getDisappearingTtl() > 0) {
-          int limit = 1000 - totalDeleted;
-          OffsetDateTime threshold = now.minusHours(conv.getDisappearingTtl());
-          List<Long> expiredIds = messageRepository.findExpiredMessageIds(
-              conv.getConversationId(), threshold, PageRequest.of(0, limit));
 
-          if (!expiredIds.isEmpty()) {
-            messageRepository.softDeleteMessages(expiredIds, now);
-            totalDeleted += expiredIds.size();
-            log.info("Soft deleted {} expired messages for conversation ID {}", expiredIds.size(), conv.getConversationId());
+        for (Conversation conv : conversations) {
+          if (totalDeleted >= 1000) {
+            break;
+          }
+          if (conv.getDisappearingTtl() != null && conv.getDisappearingTtl() > 0) {
+            int limit = 1000 - totalDeleted;
+            OffsetDateTime threshold = now.minusHours(conv.getDisappearingTtl());
+            List<Long> expiredIds = messageRepository.findExpiredMessageIds(
+                conv.getConversationId(), threshold, PageRequest.of(0, limit));
+
+            if (!expiredIds.isEmpty()) {
+              messageRepository.softDeleteMessages(expiredIds, now);
+              totalDeleted += expiredIds.size();
+              log.info("Soft deleted {} expired messages for conversation ID {}", expiredIds.size(), conv.getConversationId());
+            }
           }
         }
+        page++;
       }
       log.info("Disappearing messages cleanup job finished. Total messages deleted: {}", totalDeleted);
     } catch (Exception e) {

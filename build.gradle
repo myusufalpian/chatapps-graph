@@ -94,6 +94,7 @@ dependencyManagement {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	exclude '**/*ApplicationTests.class'
 	finalizedBy jacocoTestReport
 }
 

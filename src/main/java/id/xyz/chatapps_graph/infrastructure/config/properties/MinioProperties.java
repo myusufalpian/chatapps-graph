@@ -15,4 +15,9 @@ public class MinioProperties {
   private String secretKey;
 
   private String bucket;
+
+  public String buildUrl(String path) {
+    if (path == null) return null;
+    return endpoint + "/" + bucket + "/" + path;
+  }
 }
