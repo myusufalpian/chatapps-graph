@@ -198,7 +198,7 @@ type Mutation {
 
 <!-- sync:sprint-status -->
 | Sprint | Features | Status |
-|---|---|---|
+|---|---|--------|
 | Sprint 1 | Typing Indicator, Reactions, Forwarding, Rate Limiting | ✅ Done |
 | Sprint 2A | Online/Last Seen, Message Search | ✅ Done |
 | Sprint 2B | FCM Push Notifications, Media Thumbnail | ✅ Done |
@@ -207,33 +207,10 @@ type Mutation {
 | Sprint 5 | Message Delivery Status (Double Tick) | ✅ Done |
 | Sprint 6 | Disappearing Messages, Link Preview | ✅ Done |
 | Sprint 7 | WebSocket Multi-Instance (Redis Pub/Sub), RabbitMQ, API Versioning | ✅ Done |
-| Sprint 8 | Voice Metadata, Chat Export, Analytics/Monitoring, E2EE | 🚧 In Progress |
+| Sprint 8 | Voice Metadata, Chat Export, Analytics/Monitoring, E2EE | ✅ Done |
 <!-- end-sync:sprint-status -->
 
-## Active Tasks (Sprint 8)
-
-- [ ] **13. Voice Message Metadata** — waveform data extraction & storage
-- [ ] **19. Message Backup/Export** — JSON/PDF export, archive to MinIO
-- [ ] **21. Analytics & Monitoring** — Micrometer, Prometheus, Grafana dashboards
-- [ ] **20. End-to-End Encryption (E2EE)** — Signal Protocol design & implementation
-
 ---
-
-## Architect Review & Issues Backlog
-
-Hasil code review menyeluruh tersedia di dua file:
-
-| File | Deskripsi |
-|---|---|
-| [`ARCHITECT_REVIEW.md`](ARCHITECT_REVIEW.md) | Laporan lengkap: critical issues, code smells, miss implementasi, dan rekomendasi fitur |
-| [`ISSUES_BACKLOG.md`](ISSUES_BACKLOG.md) | Checklist actionable dengan referensi file & baris yang perlu diperbaiki |
-
-Ringkasan temuan:
-- **6 Critical** — N+1 receipt insert, @Value violation, God Class, raw SQL inline, double-serialize Redis, memory risk scheduler
-- **9 Code Smells** — duplicate logic, non-final constant, emoji di log, rate limit bypass di WebSocket
-- **7 Miss Implementasi** — `hasMore` bug, silent WebSocket auth, missing FK/index, ambiguous About schema
-- **8 Fitur Backlog** — User Blocking, Idempotency Key, Message Pinning, @Mention, Circuit Breaker wirings
-
 ## Architecture Decisions
 
 | Decision | Rationale | Upgrade Path |
